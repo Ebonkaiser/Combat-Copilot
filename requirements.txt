@@ -1,0 +1,14 @@
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+sse-starlette==3.4.8
+langgraph==1.2.11
+langchain-core==1.6.0
+langchain-google-genai==4.3.5
+google-genai==1.68.0
+llama-index-core==0.14.24
+llama-index-vector-stores-chroma==0.5.5
+llama-index-embeddings-google-genai==0.5.1
+chromadb==1.5.9
+python-dotenv==1.2.2
+pydantic==2.12.5
+PyYAML==6.0.3

@@ -1,0 +1,159 @@
+# CI/CD for the AI Combat Copilot & GM Assistant.
+#
+# MANUAL PREREQUISITES -- this workflow automates redeploys of already-
+# provisioned infrastructure, it does not provision it. None of this can run
+# successfully until:
+#   1. This repo has been pushed to GitHub, with the following repository
+#      secrets configured: GOOGLE_API_KEY, DROPLET_HOST, DROPLET_USER,
+#      DROPLET_SSH_KEY.
+#   2. Docker + the Docker Compose plugin are already installed on the
+#      target Droplet.
+#   3. docker-compose.yml and a real .env (with GOOGLE_API_KEY) are already
+#      present in the deploy directory on the Droplet.
+#   4. A one-time `docker login ghcr.io` has been run on the Droplet itself
+#      (a personal access token with package:read scope), so it can pull
+#      images this workflow pushes. This workflow does not do that login.
+#
+# Test tiers (see tests/ for the full split rationale):
+#   - fast/free tier (job: test) -- test_state_engine.py + test_evals.py
+#     (18 of 19 tests; the 19th, test_judge_narration_live_model_smoke_test,
+#     self-skips via its own @pytest.mark.skipif when no key is present) +
+#     the Angular Karma suite. No API key, no network flakiness. Gates
+#     every push and PR.
+#   - live tier (job: test-live) -- test_combat_graph.py +
+#     test_knowledge_engine.py + test_evals.py again (so the live smoke test
+#     actually runs this time). Needs GOOGLE_API_KEY and real network calls
+#     to Gemini. Deliberately NOT run on every PR -- only on pushes to main,
+#     or a manual run -- to avoid burning API quota and inheriting Gemini's
+#     uptime as a dependency of every contributor's every push.
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  test:
+    name: Fast tests (free, deterministic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run free/deterministic backend tests
+        run: pytest tests/test_state_engine.py tests/test_evals.py -v
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Angular unit tests
+        working-directory: frontend
+        run: npm test -- --watch=false --browsers=ChromeHeadless
+
+  test-live:
+    name: Live API tests (Gemini-dependent)
+    needs: test
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run live-API-dependent tests
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: pytest tests/test_combat_graph.py tests/test_knowledge_engine.py tests/test_evals.py -v
+
+  build-and-push:
+    name: Build and push image
+    needs: test-live
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute lowercased image name
+        # GHCR requires an all-lowercase path; github.repository doesn't
+        # guarantee that (org/user or repo names can have mixed case).
+        run: echo "IMAGE_NAME=${REGISTRY}/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          # Built-in token, scoped to this Actions run -- sufficient for the
+          # push side. It does NOT give the Droplet any way to pull; that's
+          # the separate one-time login noted at the top of this file.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (tagged with the commit SHA, not just latest)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    name: Deploy to Droplet
+    needs: build-and-push
+    # Only real merges to main deploy -- never a PR build, and never a
+    # manual workflow_dispatch run (that's for on-demand test/build runs
+    # without side effects on the live server).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute lowercased image name
+        run: echo "IMAGE_NAME=${REGISTRY}/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      # NOTE: no post-deploy health check here -- server.py has no
+      # health-check endpoint yet (deferred, not solved in this pass; see
+      # module6_unitD_cicd_handoff.md). This step declares success once the
+      # containers are (re)started, not once they're confirmed responding.
+      # Known, accepted limitation: docker compose down/up briefly takes the
+      # app offline during redeploy -- no blue-green/rolling deploy without
+      # meaningfully more infrastructure than a single Droplet.
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/combat-copilot
+            export IMAGE_NAME=${{ env.IMAGE_NAME }}
+            export IMAGE_TAG=${{ github.sha }}
+            docker compose pull
+            docker compose up -d
+            docker image prune -af

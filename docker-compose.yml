@@ -1,0 +1,21 @@
+services:
+  app:
+    # image + build together: `docker compose build` (local dev, Units A-C)
+    # tags the local build as this name; `docker compose pull` (Droplet
+    # deploy, Unit D) fetches it from the registry instead. IMAGE_NAME/TAG
+    # are set by the CI deploy job's SSH session, not stored on the Droplet;
+    # local runs fall back to the defaults shown.
+    image: ${IMAGE_NAME:-combat-copilot}:${IMAGE_TAG:-latest}
+    build:
+      context: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - chroma_data:/app/chroma_db
+      - state_data:/app/state_db
+
+volumes:
+  chroma_data:
+  state_data:

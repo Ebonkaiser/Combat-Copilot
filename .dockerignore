@@ -1,0 +1,33 @@
+# Single build context: the repo root, for the one merged Dockerfile.
+
+.git
+.gitattributes
+
+# Secrets — must never enter a build context, even if no COPY references them.
+.env
+.env.*
+
+# Python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated/runtime data — belongs in a volume, not the image.
+chroma_db/
+test_chroma_db/
+state_db/
+
+# Dev/test-only source, excluded from the runtime image.
+tests/
+eval_harness.py
+
+# Frontend build artifacts -- the source itself (src/, package.json, etc.)
+# IS needed now, since the Dockerfile's frontend-build stage runs from here.
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Not needed for the image.
+GMAssistant/
+
+*.md

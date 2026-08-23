@@ -1,0 +1,1 @@
+{"encounter_id": "123", "round": 1, "active_turn_index": 0, "combatants": [{"id": "c1", "name": "Goblin", "type": "enemy", "armor_class": 10, "max_hp": 20, "current_hp": 20}]}
