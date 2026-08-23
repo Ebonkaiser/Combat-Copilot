@@ -1,0 +1,24 @@
+# Secrets -- never commit
+.env
+.env.*
+*.pem
+*_deploy_key
+*_deploy_key.pub
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated/runtime data -- belongs in a volume, not the repo
+chroma_db/
+test_chroma_db/
+state_db/
+
+# Frontend (has its own .gitignore too, but belt-and-suspenders at the root)
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Unrelated nested project
+GMAssistant/
