@@ -23,7 +23,7 @@
 #   - live tier (job: test-live) -- test_combat_graph.py +
 #     test_knowledge_engine.py + test_evals.py again (so the live smoke test
 #     actually runs this time). Needs GOOGLE_API_KEY and real network calls
-#     to Gemini. Deliberately NOT run on every PR -- only on pushes to main,
+#     to Gemini. Deliberately NOT run on every PR -- only on pushes to master,
 #     or a manual run -- to avoid burning API quota and inheriting Gemini's
 #     uptime as a dependency of every contributor's every push.
 
@@ -31,9 +31,9 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 env:
@@ -73,7 +73,7 @@ jobs:
   test-live:
     name: Live API tests (Gemini-dependent)
     needs: test
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +93,7 @@ jobs:
   build-and-push:
     name: Build and push image
     needs: test-live
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -127,10 +127,10 @@ jobs:
   deploy:
     name: Deploy to Droplet
     needs: build-and-push
-    # Only real merges to main deploy -- never a PR build, and never a
+    # Only real merges to master deploy -- never a PR build, and never a
     # manual workflow_dispatch run (that's for on-demand test/build runs
     # without side effects on the live server).
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - name: Compute lowercased image name
