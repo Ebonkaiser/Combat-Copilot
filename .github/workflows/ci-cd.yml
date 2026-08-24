@@ -68,7 +68,10 @@ jobs:
 
       - name: Run Angular unit tests
         working-directory: frontend
-        run: npm test -- --watch=false --browsers=ChromeHeadless
+        # ChromeHeadlessCI (karma.conf.js) adds --no-sandbox -- plain
+        # ChromeHeadless refuses to start under CI's restricted sandbox
+        # ("Running as root without --no-sandbox is not supported").
+        run: npm test -- --watch=false --browsers=ChromeHeadlessCI
 
   test-live:
     name: Live API tests (Gemini-dependent)
