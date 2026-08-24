@@ -54,7 +54,15 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run free/deterministic backend tests
-        run: pytest tests/test_state_engine.py tests/test_evals.py -v
+        # python -m pytest, not bare pytest -- this repo has flat root-level
+        # modules (schemas.py, eval_harness.py, etc.) with no src/ package
+        # layout, and tests/ has no __init__.py. Bare `pytest` doesn't add
+        # the CWD to sys.path, so those root modules aren't importable;
+        # `python -m pytest` does. Verified: bare pytest fails here with
+        # "ImportError: cannot import name 'EncounterState' from 'schemas'
+        # (unknown location)" / "ModuleNotFoundError: No module named
+        # 'eval_harness'" -- exactly the CI failure this fixes.
+        run: python -m pytest tests/test_state_engine.py tests/test_evals.py -v
 
       - uses: actions/setup-node@v4
         with:
@@ -91,7 +99,7 @@ jobs:
       - name: Run live-API-dependent tests
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        run: pytest tests/test_combat_graph.py tests/test_knowledge_engine.py tests/test_evals.py -v
+        run: python -m pytest tests/test_combat_graph.py tests/test_knowledge_engine.py tests/test_evals.py -v
 
   build-and-push:
     name: Build and push image
