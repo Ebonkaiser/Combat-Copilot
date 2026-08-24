@@ -3,7 +3,7 @@ category: location
 faction: neutral
 title: "Zhong Gong (Zhongdong)"
 tags: [neutral-ground, tea-house-village, mission-hub]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-17
 ---
 

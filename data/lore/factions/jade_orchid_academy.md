@@ -3,7 +3,7 @@ category: faction
 faction: jade_orchid_academy
 title: "Jade Orchid Academy"
 tags: [aristocrats, traditionalists, swordsmanship]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-05-31
 ---
 

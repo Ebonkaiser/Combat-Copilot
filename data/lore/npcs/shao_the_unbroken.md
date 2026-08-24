@@ -3,7 +3,7 @@ category: npc
 faction: ankamideus_rebellion
 title: "Shao the Unbroken"
 tags: [adovarius-acolyte, escaped-verdant-meridian, sulfur, evasive]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-07
 ---
 

@@ -3,7 +3,7 @@ category: timeline
 faction: sun_eater_sect
 title: "Session 10: Bug George's Last Meal (most recent session)"
 tags: [session-log, chen-nguyen-removed, master-ba-introduced, latest]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-08-19
 ---
 

@@ -3,7 +3,7 @@ category: faction
 faction: sun_eater_sect
 title: "Sun-Eater Sect"
 tags: [rebels, outcasts, smugglers, rebellion-first-ally]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

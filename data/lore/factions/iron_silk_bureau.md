@@ -3,7 +3,7 @@ category: faction
 faction: iron_silk_bureau
 title: "Iron Silk Bureau"
 tags: [empire, law-enforcement, spy-network, antagonist-faction]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

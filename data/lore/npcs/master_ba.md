@@ -3,7 +3,7 @@ category: npc
 faction: sun_eater_sect
 title: "Master Ba"
 tags: [imperial-spy, active-target, xiaoguanzhou, munitions]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

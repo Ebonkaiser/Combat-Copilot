@@ -3,7 +3,7 @@ category: npc
 faction: orc_regiment
 title: "The Orc Handler"
 tags: [toru-backstory, deceased, orc]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-06-24
 ---
 

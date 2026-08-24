@@ -3,7 +3,7 @@ category: quest
 faction: cloud_tread_syndicate
 title: "Quest: Protect Master Kang Chen (Completed)"
 tags: [poisoning-mystery, tea-house, sessions-6-7]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-23
 ---
 

@@ -3,7 +3,7 @@ category: timeline
 faction: ankamideus_rebellion
 title: "Session 9: Pickles and the Rat Tunnels"
 tags: [session-log, executioner-oath, draxis, chen-nguyen-hunt]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-08-13
 ---
 

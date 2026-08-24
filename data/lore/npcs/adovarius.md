@@ -3,7 +3,7 @@ category: npc
 faction: ankamideus_rebellion
 title: "Adovarius"
 tags: [mage, handler, antagonist-turned-handler, sulfur, draconic]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

@@ -3,7 +3,7 @@ category: npc
 faction: ghost_mountain_monks
 title: "The Ghost Mountain Pilgrim"
 tags: [minor-npc, lore-source, mourning]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-06-10
 ---
 

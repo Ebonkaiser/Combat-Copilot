@@ -3,7 +3,7 @@ category: timeline
 faction: neutral
 title: "Session 1: Tea, Poison, and Opportunity Attacks"
 tags: [session-log, blood-feud, jiangshi]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-06-04
 ---
 

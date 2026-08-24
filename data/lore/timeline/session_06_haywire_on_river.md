@@ -3,7 +3,7 @@ category: timeline
 faction: sun_eater_sect
 title: "Session 6: Haywire on the River"
 tags: [session-log, river-raid-conclusion, hanzo-introduced]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-07-16
 ---
 

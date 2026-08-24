@@ -3,7 +3,7 @@ category: timeline
 faction: neutral
 title: "Session 2: A Single Tear Rolls Down His Face"
 tags: [session-log, meridian-scrolls, adovarius]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-06-10
 ---
 

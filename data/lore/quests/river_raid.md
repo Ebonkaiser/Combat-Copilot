@@ -3,7 +3,7 @@ category: quest
 faction: sun_eater_sect
 title: "Quest: The River Raid (Completed)"
 tags: [barge-retrieval, sun-eater-sect, sessions-5-6]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-17
 ---
 

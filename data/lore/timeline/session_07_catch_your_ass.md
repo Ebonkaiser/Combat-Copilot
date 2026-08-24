@@ -3,7 +3,7 @@ category: timeline
 faction: cloud_tread_syndicate
 title: "Session 7: Catch Your Ass"
 tags: [session-log, kang-chen-saved, shao-introduced]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-07-22
 ---
 

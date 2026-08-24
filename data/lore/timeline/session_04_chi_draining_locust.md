@@ -3,7 +3,7 @@ category: timeline
 faction: neutral
 title: "Session 4: The Chi-Draining Locust of Tian Wei"
 tags: [session-log, tian-wei, underdark, empress-summons]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-07-01
 ---
 

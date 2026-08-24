@@ -3,7 +3,7 @@ category: location
 faction: ankamideus_rebellion
 title: "Sanctuary of Starlight"
 tags: [hidden-temple, dungeon-trials, faction-turning-point, milin-lore]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-07
 ---
 

@@ -3,7 +3,7 @@ category: location
 faction: neutral
 title: "Tian Wei"
 tags: [dungeon, healed, underdark, chi-drain]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-02
 ---
 

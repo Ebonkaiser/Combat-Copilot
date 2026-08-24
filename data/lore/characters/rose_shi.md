@@ -3,7 +3,7 @@ category: character
 faction: ankamideus_rebellion
 title: "Rose (Rose Shi)"
 tags: [pc, fighter, human, poisoner, player-character]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

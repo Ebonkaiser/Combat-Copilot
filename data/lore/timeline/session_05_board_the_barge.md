@@ -3,7 +3,7 @@ category: timeline
 faction: sun_eater_sect
 title: "Session 5: Board the Barge, Brothers"
 tags: [session-log, river-raid, sun-eater-sect]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-07-08
 ---
 

@@ -3,7 +3,7 @@ category: item
 faction: iron_silk_bureau
 title: "The Meridian Scrolls"
 tags: [macguffin, spy-list, rebel-weapon]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

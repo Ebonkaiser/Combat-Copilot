@@ -3,7 +3,7 @@ category: quest
 faction: ghost_mountain_monks
 title: "Quest: The Jiangshi of the Song Gong Trail (Completed)"
 tags: [monster-hunt, session-1-2]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-06-10
 ---
 

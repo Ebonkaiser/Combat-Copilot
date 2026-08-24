@@ -3,7 +3,7 @@ category: location
 faction: iron_silk_bureau
 title: "Gak Lei-Kun"
 tags: [bureau-headquarters, fortified-town, murder-scene]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-17
 ---
 

@@ -3,7 +3,7 @@ category: npc
 faction: iron_silk_bureau
 title: "Zhu"
 tags: [former-handler, empress-liaison, deprecated-allegiance]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-07
 ---
 

@@ -3,7 +3,7 @@ category: quest
 faction: neutral
 title: "Quest: Cruel Thievery — The Tian Wei Chi-Drain (Completed)"
 tags: [dungeon-crawl, underdark, session-4]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-02
 ---
 

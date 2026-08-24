@@ -3,7 +3,7 @@ category: character
 faction: ghost_mountain_monks
 title: "Toru"
 tags: [pc, monk, orc, orc-regiment-commander, player-character]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

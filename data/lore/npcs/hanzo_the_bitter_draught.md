@@ -3,7 +3,7 @@ category: npc
 faction: cloud_tread_syndicate
 title: "Hanzo the Bitter Draught"
 tags: [poisoner, captive, tea-house-mystery, evasive]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-23
 ---
 

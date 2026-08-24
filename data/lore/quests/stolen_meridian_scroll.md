@@ -3,7 +3,7 @@ category: quest
 faction: iron_silk_bureau
 title: "Quest: The Stolen Meridian Scroll (Investigation Completed / Scrolls Recovered)"
 tags: [murder-mystery, gak-lei-kun, session-2]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-23
 ---
 

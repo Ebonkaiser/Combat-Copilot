@@ -3,7 +3,7 @@ category: character
 faction: ankamideus_rebellion
 title: "U.G. (Ichidori / Yuji Ichidori)"
 tags: [pc, rogue, warlock-pact, elf, executioner-of-her-will, player-character]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

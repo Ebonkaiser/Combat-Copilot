@@ -3,7 +3,7 @@ category: timeline
 faction: ankamideus_rebellion
 title: "Session 8: Hay, Blades, and Heresy"
 tags: [session-log, sanctuary-of-starlight, faction-defection, major-turning-point]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-08-06
 ---
 

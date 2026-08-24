@@ -3,7 +3,7 @@ category: quest
 faction: iron_silk_bureau
 title: "Quest: The Blood Feud Treaty (Completed)"
 tags: [sabotage, tea-house, session-1]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-06-04
 ---
 

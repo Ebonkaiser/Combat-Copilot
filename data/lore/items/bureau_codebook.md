@@ -3,7 +3,7 @@ category: item
 faction: sun_eater_sect
 title: "Bureau Codebook"
 tags: [intelligence-asset, chen-nguyen, active-use]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

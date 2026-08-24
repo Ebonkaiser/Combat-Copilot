@@ -3,7 +3,7 @@ category: character
 faction: ankamideus_rebellion
 title: "Iron / Duke Horn"
 tags: [pc, paladin, minotaur, split-personality, player-character]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

@@ -3,7 +3,7 @@ category: faction
 faction: ghost_mountain_monks
 title: "Ghost-Mountain Monks"
 tags: [ascetics, isolationists, toru-origin, allied-faction]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-06-24
 ---
 

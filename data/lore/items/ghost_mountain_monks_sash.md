@@ -3,7 +3,7 @@ category: item
 faction: ghost_mountain_monks
 title: "Ghost Mountain Monk's Sash"
 tags: [equipped, toru, reward-item]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-06-24
 ---
 

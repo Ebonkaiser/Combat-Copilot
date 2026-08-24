@@ -3,7 +3,7 @@ category: npc
 faction: ankamideus_rebellion
 title: "Ankamideus (The True Empress of Light)"
 tags: [dragon, patron, warlock-pact, ug, iron-duke-horn, deity-figure]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-13
 ---
 

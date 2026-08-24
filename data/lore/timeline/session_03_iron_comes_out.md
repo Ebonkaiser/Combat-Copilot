@@ -3,7 +3,7 @@ category: timeline
 faction: ghost_mountain_monks
 title: "Session 3: Iron Comes Out to Play"
 tags: [session-log, toru-backstory, orc-regiment, iron-transformation]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 session_date: 2026-06-23
 ---
 

@@ -3,7 +3,7 @@ category: faction
 faction: cloud_tread_syndicate
 title: "Cloud-Tread Syndicate"
 tags: [merchant-guild, information-brokers, double-agents]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-23
 ---
 

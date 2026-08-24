@@ -36,7 +36,10 @@ def test_combat_graph_execution(combat_engine):
                 "conditions": [],
                 "tactical_tags": ["Defensive"],
                 "resources": {},
-                "faction": "Iron Silk"
+                # Must match the lore corpus's faction slug convention
+                # (data/lore/factions/*.md), not the human-readable name --
+                # metadata filtering is an exact match, not fuzzy.
+                "faction": "iron_silk_bureau"
             }
         ],
         "last_event": {

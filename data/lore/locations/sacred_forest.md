@@ -3,7 +3,7 @@ category: location
 faction: neutral
 title: "The Sacred Forest"
 tags: [wilderness, border-region, veil, threshold]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-07
 ---
 

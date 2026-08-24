@@ -3,7 +3,7 @@ category: quest
 faction: ghost_mountain_monks
 title: "Quest: Defend the Ghost Mountain Monks (Completed)"
 tags: [toru-backstory, orc-regiment, session-3]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-06-24
 ---
 

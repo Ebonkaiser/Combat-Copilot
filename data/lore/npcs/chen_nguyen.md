@@ -3,7 +3,7 @@ category: npc
 faction: sun_eater_sect
 title: "Chen Nguyen (Master Chen)"
 tags: [imperial-spy, deceased, first-rebel-removal, draxis]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-08-20
 ---
 

@@ -3,7 +3,7 @@ category: npc
 faction: cloud_tread_syndicate
 title: "Master Kang Chen"
 tags: [merchant-prince, poisoning-victim, cloud-tread-leader]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-23
 ---
 

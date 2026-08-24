@@ -3,7 +3,7 @@ category: faction
 faction: orc_regiment
 title: "Ghost Mountain Monks' Orc Regiment"
 tags: [military-asset, toru, iron-duke-horn, secret]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-06-24
 ---
 

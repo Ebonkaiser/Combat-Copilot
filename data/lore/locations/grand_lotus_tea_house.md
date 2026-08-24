@@ -3,7 +3,7 @@ category: location
 faction: neutral
 title: "Grand Lotus Tea House"
 tags: [neutral-ground, hidden-lab, blood-feud, hanzo]
-source: SessionKeeper (campaign: Light and Magic)
+source: "SessionKeeper (campaign: Light and Magic)"
 last_updated: 2026-07-23
 ---
 
