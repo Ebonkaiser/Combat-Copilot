@@ -335,4 +335,54 @@ describe('AppComponent', () => {
       expect(comp.selectedTargetId).toBe('existing_target');
     });
   });
+
+  describe('newEncounter', () => {
+    it('does nothing when the confirm dialog is declined', () => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      combat.narrative.set('some narration');
+      spyOn(window, 'confirm').and.returnValue(false);
+
+      comp.newEncounter();
+
+      httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
+      expect(comp.selectedTargetId).toBe('c1');
+      expect(combat.narrative()).toBe('some narration');
+    });
+
+    it('clears form state, narrative, and creates a fresh encounter when confirmed', () => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.damageAmount = 99;
+      comp.selectedType = 'Fire';
+      comp.conditionInput = 'Bleed';
+      combat.narrative.set('leftover narration');
+      spyOn(window, 'confirm').and.returnValue(true);
+
+      comp.newEncounter();
+
+      expect(comp.selectedTargetId).toBe('');
+      expect(comp.damageAmount).toBe(8);
+      expect(comp.selectedType).toBe('Slashing');
+      expect(comp.conditionInput).toBe('');
+      expect(combat.narrative()).toBe('');
+
+      const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
+      const body = req.request.body as EncounterState;
+      expect(body.combatants).toEqual([]);
+      expect(body.round).toBe(1);
+
+      const fresh = makeEncounter({ encounter_id: body.encounter_id, combatants: [] });
+      req.flush(fresh);
+      expect(combat.encounter()).toEqual(fresh);
+    });
+  });
 });

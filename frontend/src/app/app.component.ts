@@ -16,7 +16,8 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
           <h3>Initiative & Health Tracker</h3>
           <div>
             <button (click)="openAddModal()" style="padding: 6px; margin-right: 8px; background: #10b981; color: white; border: none; cursor: pointer;">Add Combatant</button>
-            <button (click)="nextTurn()" style="padding: 6px; background: #f59e0b; color: white; border: none; cursor: pointer;">Next Turn</button>
+            <button (click)="nextTurn()" style="padding: 6px; margin-right: 8px; background: #f59e0b; color: white; border: none; cursor: pointer;">Next Turn</button>
+            <button (click)="newEncounter()" style="padding: 6px; background: #dc2626; color: white; border: none; cursor: pointer;">New Encounter</button>
           </div>
         </div>
         
@@ -150,6 +151,10 @@ export class AppComponent implements OnInit {
   ];
 
   ngOnInit(): void {
+    this.createFreshEncounter();
+  }
+
+  private createFreshEncounter(): void {
     const initialEncounter: EncounterState = {
       encounter_id: 'enc_' + Math.floor(Math.random() * 100000),
       round: 1,
@@ -161,6 +166,20 @@ export class AppComponent implements OnInit {
       next: (res) => this.combat.encounter.set(res),
       error: (err) => console.error('Failed to create initial encounter:', err),
     });
+  }
+
+  newEncounter(): void {
+    if (!window.confirm('Start a new encounter? This will clear the current session.')) {
+      return;
+    }
+
+    this.selectedTargetId = '';
+    this.damageAmount = 8;
+    this.selectedType = 'Slashing';
+    this.conditionInput = '';
+    this.combat.narrative.set('');
+
+    this.createFreshEncounter();
   }
 
   submitAction(): void {
