@@ -26,6 +26,7 @@ describe('CombatService', () => {
     conditions: [],
     tactical_tags: [],
     resources: {},
+    initiative: 0,
     ...overrides,
   });
 

@@ -1,6 +1,7 @@
-import { Component, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, PLATFORM_ID, inject } from '@angular/core';
+import { CommonModule, isPlatformServer } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { retry, timer } from 'rxjs';
 import { CombatService } from './services/combat.service';
 import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from './models/combat.model';
 
@@ -9,6 +10,9 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
+    <div *ngIf="connectionError" style="background: #dc2626; color: white; padding: 10px 20px; font-family: monospace;">
+      Could not reach the backend after several retries. It may still be starting up (this can take up to a minute on first boot) -- wait a bit and <a (click)="createFreshEncounter()" style="color: white; text-decoration: underline; cursor: pointer;">try again</a>.
+    </div>
     <div style="display: flex; gap: 20px; padding: 20px; font-family: monospace;">
       <!-- Column 1: Combat Tracker -->
       <div style="flex: 1; border: 1px solid #444; padding: 15px; border-radius: 6px; position: relative;">
@@ -37,7 +41,7 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
 
             <div style="display: flex; justify-content: space-between;">
               <strong>{{ c.name }} ({{ c.type }})</strong>
-              <span>AC: {{ c.armor_class }}</span>
+              <span>Init: {{ c.initiative }} | AC: {{ c.armor_class }}</span>
             </div>
             <div>HP: {{ c.current_hp }} / {{ c.max_hp }}</div>
             <div style="background: #eee; width: 100%; height: 8px; margin: 4px 0;">
@@ -115,6 +119,9 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
           <option value="npc">NPC</option>
         </select>
 
+        <label style="color: black;">Initiative: </label>
+        <input type="number" [(ngModel)]="newCombatant.initiative" style="width: 100%; margin-bottom: 8px;" />
+
         <label style="color: black;">Max HP: </label>
         <input type="number" [(ngModel)]="newCombatant.max_hp" style="width: 100%; margin-bottom: 8px;" />
 
@@ -134,6 +141,7 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
 })
 export class AppComponent implements OnInit {
   combat = inject(CombatService);
+  private isServer = isPlatformServer(inject(PLATFORM_ID));
 
   selectedTargetId = '';
   damageAmount = 8;
@@ -144,6 +152,7 @@ export class AppComponent implements OnInit {
   selectedTemplate = '';
   addAmount = 1;
   newCombatant: Partial<Combatant> = this.getEmptyCombatant();
+  connectionError = false;
 
   damageTypes: DamageType[] = [
     'Slashing', 'Piercing', 'Bludgeoning', 'Fire', 'Cold',
@@ -154,7 +163,9 @@ export class AppComponent implements OnInit {
     this.createFreshEncounter();
   }
 
-  private createFreshEncounter(): void {
+  createFreshEncounter(): void {
+    this.connectionError = false;
+
     const initialEncounter: EncounterState = {
       encounter_id: 'enc_' + Math.floor(Math.random() * 100000),
       round: 1,
@@ -162,10 +173,29 @@ export class AppComponent implements OnInit {
       combatants: [],
     };
 
-    this.combat.createEncounter(initialEncounter).subscribe({
-      next: (res) => this.combat.encounter.set(res),
-      error: (err) => console.error('Failed to create initial encounter:', err),
-    });
+    // A cold backend (first-ever boot re-ingests lore/rules before it
+    // starts accepting requests) can take up to ~30s, during which nginx
+    // returns 502 for the API. Without a retry, this call fails silently
+    // (console.error only) and every later action -- including the "Add"
+    // button in the modal -- becomes a no-op with zero user-visible
+    // feedback, which looks exactly like the whole app hanging.
+    //
+    // Retries are skipped during SSR/prerendering (isServer): ngOnInit also
+    // runs server-side at `ng build` time with no real backend to ever
+    // succeed against, and retrying there just burns wall-clock time until
+    // Angular's own prerender timeout aborts the build -- confirmed by
+    // reproducing the exact "TimeoutError: The operation was aborted due to
+    // timeout" build failure this caused before adding this guard.
+    this.combat
+      .createEncounter(initialEncounter)
+      .pipe(retry({ count: this.isServer ? 0 : 10, delay: () => timer(2000) }))
+      .subscribe({
+        next: (res) => this.combat.encounter.set(res),
+        error: (err) => {
+          console.error('Failed to create initial encounter after retries:', err);
+          this.connectionError = true;
+        },
+      });
   }
 
   newEncounter(): void {
@@ -222,14 +252,14 @@ export class AppComponent implements OnInit {
   }
 
   getEmptyCombatant(): Partial<Combatant> {
-    return { name: '', type: 'enemy', armor_class: 10, max_hp: 10, faction: '' };
+    return { name: '', type: 'enemy', armor_class: 10, max_hp: 10, faction: '', initiative: 0 };
   }
 
   onTemplateChange(): void {
     if (this.selectedTemplate === 'enemy') {
-      this.newCombatant = { name: 'Enemy', type: 'enemy', armor_class: 12, max_hp: 20, faction: 'Hostile' };
+      this.newCombatant = { name: 'Enemy', type: 'enemy', armor_class: 12, max_hp: 20, faction: 'Hostile', initiative: 0 };
     } else if (this.selectedTemplate === 'player') {
-      this.newCombatant = { name: 'Player', type: 'player', armor_class: 15, max_hp: 30, faction: '' };
+      this.newCombatant = { name: 'Player', type: 'player', armor_class: 15, max_hp: 30, faction: '', initiative: 0 };
     } else {
       this.newCombatant = this.getEmptyCombatant();
     }
@@ -239,14 +269,19 @@ export class AppComponent implements OnInit {
     const enc = this.combat.encounter();
     if (!enc) return;
 
+    // Captured before mutation so a re-sort below can preserve *who* is
+    // acting, not merely which array index currently means "active".
+    const activeCombatant = enc.combatants[enc.active_turn_index];
+
     if (this.newCombatant.type === 'player') {
       this.addAmount = 1;
     }
 
+    const newIds: string[] = [];
     for (let i = 0; i < this.addAmount; i++) {
       const id = this.newCombatant.type + '_' + Math.floor(Math.random() * 1000000);
       const name = this.addAmount > 1 ? `${this.newCombatant.name || 'Unknown'} ${i + 1}` : (this.newCombatant.name || 'Unknown');
-      
+
       const combatant: Combatant = {
         id: id,
         name: name,
@@ -257,18 +292,30 @@ export class AppComponent implements OnInit {
         conditions: [],
         tactical_tags: [],
         resources: {},
-        faction: this.newCombatant.faction || undefined
+        faction: this.newCombatant.faction || undefined,
+        initiative: this.newCombatant.initiative ?? 0
       };
 
       enc.combatants.push(combatant);
+      newIds.push(id);
     }
+
+    // Highest initiative acts first (standard tabletop convention). Re-sort
+    // by identity, not index: if a newly added combatant's initiative
+    // outranks the currently active one, active_turn_index must follow the
+    // active combatant to their new position -- otherwise the turn pointer
+    // would silently land on a different combatant after the reorder.
+    enc.combatants.sort((a, b) => b.initiative - a.initiative);
+    enc.active_turn_index = activeCombatant
+      ? enc.combatants.findIndex((c) => c.id === activeCombatant.id)
+      : 0;
 
     this.combat.updateEncounter(enc.encounter_id, enc).subscribe({
       next: (updatedEnc) => {
         this.combat.encounter.set(updatedEnc);
         this.showAddModal = false;
-        if (!this.selectedTargetId && enc.combatants.length > 0) {
-          this.selectedTargetId = enc.combatants[enc.combatants.length - 1].id;
+        if (!this.selectedTargetId && newIds.length > 0) {
+          this.selectedTargetId = newIds[newIds.length - 1];
         }
       },
       error: (err) => console.error('Failed to add combatant:', err)

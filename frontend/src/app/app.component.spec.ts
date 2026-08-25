@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { AppComponent } from './app.component';
 import { CombatService } from './services/combat.service';
@@ -26,6 +26,7 @@ describe('AppComponent', () => {
     conditions: [],
     tactical_tags: [],
     resources: {},
+    initiative: 0,
     ...overrides,
   });
 
@@ -66,17 +67,42 @@ describe('AppComponent', () => {
       expect(combat.encounter()).toEqual(created);
     });
 
-    it('logs an error and leaves encounter unset if creation fails', () => {
+    it('recovers from transient failures via retry without setting connectionError', fakeAsync(() => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+
+      // First two attempts fail (e.g. backend still cold-starting behind
+      // nginx's 502), third succeeds.
+      httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'))
+        .flush('bad gateway', { status: 502, statusText: 'Bad Gateway' });
+      tick(2000);
+      httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'))
+        .flush('bad gateway', { status: 502, statusText: 'Bad Gateway' });
+      tick(2000);
+      const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
+      const created = makeEncounter({ encounter_id: req.request.body.encounter_id });
+      req.flush(created);
+
+      expect(combat.encounter()).toEqual(created);
+      expect(fixture.componentInstance.connectionError).toBeFalse();
+    }));
+
+    it('sets connectionError once every retry attempt is exhausted', fakeAsync(() => {
       spyOn(console, 'error');
       const fixture = TestBed.createComponent(AppComponent);
       fixture.detectChanges();
 
-      const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
-      req.flush('boom', { status: 500, statusText: 'Server Error' });
+      // 1 initial attempt + 10 retries = 11 total requests before giving up.
+      for (let i = 0; i < 11; i++) {
+        httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'))
+          .flush('bad gateway', { status: 502, statusText: 'Bad Gateway' });
+        tick(2000);
+      }
 
       expect(combat.encounter()).toBeNull();
+      expect(fixture.componentInstance.connectionError).toBeTrue();
       expect(console.error).toHaveBeenCalled();
-    });
+    }));
   });
 
   describe('submitAction', () => {
@@ -221,7 +247,7 @@ describe('AppComponent', () => {
       comp.selectedTemplate = 'enemy';
       comp.onTemplateChange();
 
-      expect(comp.newCombatant).toEqual({ name: 'Enemy', type: 'enemy', armor_class: 12, max_hp: 20, faction: 'Hostile' });
+      expect(comp.newCombatant).toEqual({ name: 'Enemy', type: 'enemy', armor_class: 12, max_hp: 20, faction: 'Hostile', initiative: 0 });
     });
 
     it('onTemplateChange applies the player template', () => {
@@ -233,7 +259,7 @@ describe('AppComponent', () => {
       comp.selectedTemplate = 'player';
       comp.onTemplateChange();
 
-      expect(comp.newCombatant).toEqual({ name: 'Player', type: 'player', armor_class: 15, max_hp: 30, faction: '' });
+      expect(comp.newCombatant).toEqual({ name: 'Player', type: 'player', armor_class: 15, max_hp: 30, faction: '', initiative: 0 });
     });
 
     it('onTemplateChange falls back to an empty combatant for custom', () => {
@@ -333,6 +359,75 @@ describe('AppComponent', () => {
       const req = httpMock.expectOne((r) => r.method === 'PUT');
       req.flush(req.request.body);
       expect(comp.selectedTargetId).toBe('existing_target');
+    });
+  });
+
+  describe('addCombatant initiative ordering', () => {
+    it('sorts combatants by initiative descending after adding', () => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({
+          combatants: [makeCombatant({ id: 'slow', name: 'Slow Guy', initiative: 5 })],
+          active_turn_index: 0,
+        })
+      );
+
+      const comp = fixture.componentInstance;
+      comp.newCombatant = { name: 'Fast Guy', type: 'enemy', armor_class: 12, max_hp: 10, initiative: 18 };
+      comp.addAmount = 1;
+
+      comp.addCombatant();
+
+      const req = httpMock.expectOne((r) => r.method === 'PUT');
+      const body = req.request.body as EncounterState;
+      expect(body.combatants.map((c) => c.name)).toEqual(['Fast Guy', 'Slow Guy']);
+      req.flush(body);
+    });
+
+    it('keeps the currently active combatant active after a re-sort shifts their position', () => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({
+          combatants: [
+            makeCombatant({ id: 'a', name: 'Alice', initiative: 10 }),
+            makeCombatant({ id: 'b', name: 'Bob', initiative: 5 }),
+          ],
+          active_turn_index: 1, // Bob is currently acting
+        })
+      );
+
+      const comp = fixture.componentInstance;
+      // A new combatant with higher initiative than both existing ones --
+      // inserted at the front, pushing Bob from index 1 to index 2.
+      comp.newCombatant = { name: 'Zara', type: 'enemy', armor_class: 12, max_hp: 10, initiative: 20 };
+      comp.addAmount = 1;
+
+      comp.addCombatant();
+
+      const req = httpMock.expectOne((r) => r.method === 'PUT');
+      const body = req.request.body as EncounterState;
+      expect(body.combatants.map((c) => c.name)).toEqual(['Zara', 'Alice', 'Bob']);
+      expect(body.active_turn_index).toBe(2); // still Bob, now at index 2
+      req.flush(body);
+    });
+
+    it('defaults to index 0 as active when the encounter had no combatants yet', () => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [], active_turn_index: 0 }));
+
+      const comp = fixture.componentInstance;
+      comp.newCombatant = { name: 'First', type: 'enemy', armor_class: 10, max_hp: 10, initiative: 7 };
+      comp.addAmount = 1;
+
+      comp.addCombatant();
+
+      const req = httpMock.expectOne((r) => r.method === 'PUT');
+      const body = req.request.body as EncounterState;
+      expect(body.active_turn_index).toBe(0);
+      req.flush(body);
     });
   });
 

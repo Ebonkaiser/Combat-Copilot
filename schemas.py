@@ -35,6 +35,7 @@ class Combatant(BaseModel):
     tactical_tags: List[str] = Field(default_factory=list)
     resources: Dict[str, int] = Field(default_factory=dict)
     faction: Optional[str] = None
+    initiative: int = 0
 
 
 class DamageEvent(BaseModel):

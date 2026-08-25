@@ -25,6 +25,7 @@ export interface Combatant {
   tactical_tags: string[];
   resources: Record<string, number>;
   faction?: string;
+  initiative: number;
 }
 
 export interface EncounterState {
