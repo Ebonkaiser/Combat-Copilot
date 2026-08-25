@@ -7,10 +7,17 @@ from knowledge_engine import CombatKnowledgeBase
 
 
 @pytest.fixture(scope="function")
-def kb_with_mocked_insert(tmp_path):
+def kb_with_mocked_insert(tmp_path, monkeypatch):
+    # GoogleGenAIEmbedding's underlying client validates that *some* API
+    # key is present at construction time, before any network call is
+    # made -- this is a fake, never-used value so the fixture doesn't
+    # require a real GOOGLE_API_KEY. insert_nodes/insert are mocked below,
+    # so no request is ever actually sent.
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-used")
+
     # Real CombatKnowledgeBase (real Chroma, temp dir), but insert_nodes/
     # insert are mocked out so this never makes a real embedding API call
-    # -- proves ingest_directory batches without needing GOOGLE_API_KEY.
+    # -- proves ingest_directory batches without needing a valid key.
     test_db_dir = str(tmp_path / "chroma_test_db_batch")
     kb = CombatKnowledgeBase(persist_dir=test_db_dir, collection_name="test_batch_kb")
     kb.index.insert_nodes = MagicMock()
