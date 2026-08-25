@@ -19,7 +19,7 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <h3>Initiative & Health Tracker</h3>
           <div>
-            <button (click)="openAddModal()" style="padding: 6px; margin-right: 8px; background: #10b981; color: white; border: none; cursor: pointer;">Add Combatant</button>
+            <button (click)="openAddModal()" [disabled]="!combat.encounter()" data-testid="add-combatant-btn" style="padding: 6px; margin-right: 8px; background: #10b981; color: white; border: none; cursor: pointer;">Add Combatant</button>
             <button (click)="nextTurn()" style="padding: 6px; margin-right: 8px; background: #f59e0b; color: white; border: none; cursor: pointer;">Next Turn</button>
             <button (click)="newEncounter()" style="padding: 6px; background: #dc2626; color: white; border: none; cursor: pointer;">New Encounter</button>
           </div>

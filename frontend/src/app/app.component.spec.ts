@@ -219,6 +219,21 @@ describe('AppComponent', () => {
     });
   });
 
+  describe('add combatant button availability', () => {
+    it('disables the Add Combatant button until the initial encounter has loaded, so a fast click cannot silently no-op', () => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+
+      const button = fixture.nativeElement.querySelector('[data-testid="add-combatant-btn"]') as HTMLButtonElement;
+      expect(button.disabled).toBeTrue();
+
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
+      fixture.detectChanges();
+
+      expect(button.disabled).toBeFalse();
+    });
+  });
+
   describe('add combatant modal', () => {
     it('openAddModal resets the form and shows the modal', () => {
       const fixture = TestBed.createComponent(AppComponent);
