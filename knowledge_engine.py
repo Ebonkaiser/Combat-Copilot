@@ -10,6 +10,7 @@ from llama_index.core import (
     Document,
     Settings,
 )
+from llama_index.core.ingestion import run_transformations
 from llama_index.core.vector_stores import MetadataFilters, ExactMatchFilter
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
@@ -46,34 +47,48 @@ class CombatKnowledgeBase:
         return {}, text
 
     def ingest_directory(self, input_dir: str, category: str) -> int:
-        """Loads markdown documents, assigns structured metadata, and inserts them into the Chroma index."""
+        """Loads markdown documents, assigns structured metadata, and batch-inserts them into the Chroma index."""
         if not os.path.exists(input_dir):
             return 0
 
         reader = SimpleDirectoryReader(input_dir=input_dir, required_exts=[".md", ".txt"], recursive=True)
         raw_docs = reader.load_data()
 
-        count = 0
+        processed_docs = []
         for doc in raw_docs:
             doc.metadata["category"] = category
-            
+
             # Extract YAML Frontmatter
             frontmatter, clean_text = self.extract_yaml_frontmatter(doc.text)
-            
+
             # Update metadata, converting lists to comma-separated strings for ChromaDB compatibility
             for k, v in frontmatter.items():
                 if isinstance(v, list):
                     doc.metadata[k] = ", ".join(str(i) for i in v)
                 elif v is not None:
                     doc.metadata[k] = str(v)
-                    
+
             doc.set_content(clean_text)
+            processed_docs.append(doc)
 
-            # Insert document into the existing VectorStoreIndex & ChromaDB
-            self.index.insert(doc)
-            count += 1
+        if not processed_docs:
+            return 0
 
-        return count
+        # Batch-embed instead of inserting one document at a time: each
+        # insert() previously triggered its own embedding API call, so N
+        # documents meant N sequential network round-trips at startup.
+        # insert_nodes() sub-batches embedding calls at embed_batch_size
+        # (default 10), turning that into ceil(N/10) calls.
+        nodes = run_transformations(processed_docs, Settings.transformations, show_progress=False)
+        self.index.insert_nodes(nodes)
+
+        # Preserve insert()'s per-document hash bookkeeping (used by
+        # llama_index's refresh_ref_docs/update_ref_doc dedup flow) so this
+        # stays a faithful drop-in replacement for the old per-doc loop.
+        for doc in processed_docs:
+            self.index.docstore.set_document_hash(doc.id_, doc.hash)
+
+        return len(processed_docs)
 
     def retrieve_context(self, query: str, metadata_filters: Optional[Dict[str, Any]] = None, top_k: int = 2) -> str:
         """Retrieves matching context with optional exact-match metadata filtering."""

@@ -62,7 +62,7 @@ jobs:
         # "ImportError: cannot import name 'EncounterState' from 'schemas'
         # (unknown location)" / "ModuleNotFoundError: No module named
         # 'eval_harness'" -- exactly the CI failure this fixes.
-        run: python -m pytest tests/test_state_engine.py tests/test_evals.py -v
+        run: python -m pytest tests/test_state_engine.py tests/test_evals.py tests/test_knowledge_engine_batching.py tests/test_server.py -v
 
       - uses: actions/setup-node@v4
         with:
@@ -147,10 +147,8 @@ jobs:
       - name: Compute lowercased image name
         run: echo "IMAGE_NAME=${REGISTRY}/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
-      # NOTE: no post-deploy health check here -- server.py has no
-      # health-check endpoint yet (deferred, not solved in this pass; see
-      # module6_unitD_cicd_handoff.md). This step declares success once the
-      # containers are (re)started, not once they're confirmed responding.
+      # This step now waits for /api/health to report ok before declaring
+      # success, closing the gap noted in module6_unitD_cicd_handoff.md.
       # Known, accepted limitation: docker compose down/up briefly takes the
       # app offline during redeploy -- no blue-green/rolling deploy without
       # meaningfully more infrastructure than a single Droplet.
@@ -168,3 +166,14 @@ jobs:
             docker compose pull
             docker compose up -d
             docker image prune -af
+
+            for i in $(seq 1 30); do
+              if curl -fsS http://localhost:8080/api/health | grep -q '"status":"ok"'; then
+                echo "Backend healthy."
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "Backend did not report healthy within 150s." >&2
+            docker compose logs --tail=100
+            exit 1

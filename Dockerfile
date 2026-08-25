@@ -62,4 +62,12 @@ USER appuser
 
 EXPOSE 8080
 
+# --start-period gives the container time for knowledge-base ingestion
+# before failing healthchecks count against --retries. Uses python3
+# (already in this image) via loopback -- no curl/wget dependency added.
+# Goes through nginx (not uvicorn directly) so it also validates nginx is
+# actually proxying, not just that uvicorn is up.
+HEALTHCHECK --interval=5s --timeout=3s --start-period=90s --retries=3 \
+  CMD python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).status == 200 else 1)"
+
 CMD ["/entrypoint.sh"]

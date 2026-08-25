@@ -10,7 +10,13 @@ class StateStore:
 
     def __init__(self, db_path: str = "./state_db/combat_state.db"):
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        # check_same_thread=False: the store is read/written from the main
+        # event loop thread (request handlers) and from the asyncio.to_thread
+        # worker that runs startup ingestion (see server.py's lifespan) --
+        # SQLite's own serialized-mode locking makes a single shared
+        # connection safe across threads; this just disables sqlite3's
+        # extra same-thread-only guard.
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(
             """

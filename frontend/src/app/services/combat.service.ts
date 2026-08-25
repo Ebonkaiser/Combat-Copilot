@@ -17,6 +17,10 @@ export class CombatService {
 
   constructor(private http: HttpClient) {}
 
+  public checkHealth(): Observable<{ status: string; detail?: string }> {
+    return this.http.get<{ status: string; detail?: string }>(`${this.baseUrl}/health`);
+  }
+
   public createEncounter(payload: EncounterState): Observable<EncounterState> {
     return this.http.post<EncounterState>(`${this.baseUrl}/encounters`, payload);
   }

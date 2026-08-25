@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { AppComponent } from './app.component';
 import { CombatService } from './services/combat.service';
@@ -30,6 +30,13 @@ describe('AppComponent', () => {
     ...overrides,
   });
 
+  function createReadyFixture(): ComponentFixture<AppComponent> {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/health')).flush({ status: 'ok' });
+    return fixture;
+  }
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent, HttpClientTestingModule],
@@ -44,71 +51,78 @@ describe('AppComponent', () => {
   });
 
   it('creates the component', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    fixture.detectChanges();
+    const fixture = createReadyFixture();
     httpMock.expectOne((req) => req.method === 'POST' && req.url.endsWith('/encounters')).flush(makeEncounter());
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  describe('ngOnInit', () => {
-    it('creates an initial encounter and stores it on the service', () => {
+  describe('startup (health polling)', () => {
+    it('polls /health, then creates an initial encounter once the backend reports ready', () => {
       const fixture = TestBed.createComponent(AppComponent);
       fixture.detectChanges();
 
-      const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
-      const body = req.request.body as EncounterState;
-      expect(body.round).toBe(1);
-      expect(body.active_turn_index).toBe(0);
-      expect(body.combatants).toEqual([]);
+      expect(fixture.componentInstance.backendStarting).toBeTrue();
 
-      const created = makeEncounter({ encounter_id: body.encounter_id });
-      req.flush(created);
+      httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/health')).flush({ status: 'ok' });
+      expect(fixture.componentInstance.backendStarting).toBeFalse();
 
-      expect(combat.encounter()).toEqual(created);
-    });
-
-    it('recovers from transient failures via retry without setting connectionError', fakeAsync(() => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
-
-      // First two attempts fail (e.g. backend still cold-starting behind
-      // nginx's 502), third succeeds.
-      httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'))
-        .flush('bad gateway', { status: 502, statusText: 'Bad Gateway' });
-      tick(2000);
-      httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'))
-        .flush('bad gateway', { status: 502, statusText: 'Bad Gateway' });
-      tick(2000);
       const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
       const created = makeEncounter({ encounter_id: req.request.body.encounter_id });
       req.flush(created);
 
       expect(combat.encounter()).toEqual(created);
-      expect(fixture.componentInstance.connectionError).toBeFalse();
-    }));
+    });
 
-    it('sets connectionError once every retry attempt is exhausted', fakeAsync(() => {
-      spyOn(console, 'error');
+    it('keeps polling without setting connectionError while /health reports "starting"', fakeAsync(() => {
       const fixture = TestBed.createComponent(AppComponent);
       fixture.detectChanges();
 
-      // 1 initial attempt + 10 retries = 11 total requests before giving up.
-      for (let i = 0; i < 11; i++) {
-        httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'))
-          .flush('bad gateway', { status: 502, statusText: 'Bad Gateway' });
+      httpMock.expectOne((r) => r.url.endsWith('/health'))
+        .flush({ status: 'starting' }, { status: 503, statusText: 'Service Unavailable' });
+      tick(2000);
+      httpMock.expectOne((r) => r.url.endsWith('/health'))
+        .flush({ status: 'starting' }, { status: 503, statusText: 'Service Unavailable' });
+      tick(2000);
+      httpMock.expectOne((r) => r.url.endsWith('/health')).flush({ status: 'ok' });
+
+      expect(fixture.componentInstance.connectionError).toBeFalse();
+      const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
+      req.flush(makeEncounter({ encounter_id: req.request.body.encounter_id }));
+    }));
+
+    it('fails fast with connectionError when /health reports a startup error, without retrying', fakeAsync(() => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+
+      httpMock.expectOne((r) => r.url.endsWith('/health'))
+        .flush({ status: 'error', detail: 'Backend failed to start. Check server logs.' }, { status: 503, statusText: 'Service Unavailable' });
+
+      expect(fixture.componentInstance.backendStarting).toBeFalse();
+      expect(fixture.componentInstance.connectionError).toBeTrue();
+      expect(fixture.componentInstance.connectionErrorDetail).toBe('Backend failed to start. Check server logs.');
+
+      tick(2000);
+      httpMock.expectNone((r) => r.url.endsWith('/health'));
+    }));
+
+    it('sets connectionError once every health poll attempt is exhausted', fakeAsync(() => {
+      const fixture = TestBed.createComponent(AppComponent);
+      fixture.detectChanges();
+
+      for (let i = 0; i < fixture.componentInstance.maxHealthPollAttempts; i++) {
+        httpMock.expectOne((r) => r.url.endsWith('/health'))
+          .flush({ status: 'starting' }, { status: 503, statusText: 'Service Unavailable' });
         tick(2000);
       }
 
       expect(combat.encounter()).toBeNull();
       expect(fixture.componentInstance.connectionError).toBeTrue();
-      expect(console.error).toHaveBeenCalled();
     }));
   });
 
   describe('submitAction', () => {
     it('does nothing when there is no active encounter', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
 
       combat.encounter.set(null);
@@ -120,8 +134,7 @@ describe('AppComponent', () => {
     });
 
     it('builds a DamageEvent from form fields and streams it', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
 
       const comp = fixture.componentInstance;
@@ -142,8 +155,7 @@ describe('AppComponent', () => {
     });
 
     it('sends an empty conditions array when conditionInput is blank', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
 
       const comp = fixture.componentInstance;
@@ -162,8 +174,7 @@ describe('AppComponent', () => {
 
   describe('nextTurn', () => {
     it('does nothing when there is no encounter', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
       combat.encounter.set(null);
 
@@ -174,8 +185,7 @@ describe('AppComponent', () => {
     });
 
     it('does nothing when there are no combatants', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [] }));
 
       fixture.componentInstance.nextTurn();
@@ -185,8 +195,7 @@ describe('AppComponent', () => {
     });
 
     it('advances the active_turn_index within the same round', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock
         .expectOne((r) => r.url.endsWith('/encounters'))
         .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0 }));
@@ -203,8 +212,7 @@ describe('AppComponent', () => {
     });
 
     it('wraps to the next round when the last combatant acts', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock
         .expectOne((r) => r.url.endsWith('/encounters'))
         .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' })], active_turn_index: 0, round: 1 }));
@@ -227,6 +235,10 @@ describe('AppComponent', () => {
       const button = fixture.nativeElement.querySelector('[data-testid="add-combatant-btn"]') as HTMLButtonElement;
       expect(button.disabled).toBeTrue();
 
+      httpMock.expectOne((r) => r.method === 'GET' && r.url.endsWith('/health')).flush({ status: 'ok' });
+      fixture.detectChanges();
+      expect(button.disabled).toBeTrue();
+
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
       fixture.detectChanges();
 
@@ -236,8 +248,7 @@ describe('AppComponent', () => {
 
   describe('add combatant modal', () => {
     it('openAddModal resets the form and shows the modal', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
 
       const comp = fixture.componentInstance;
@@ -254,8 +265,7 @@ describe('AppComponent', () => {
     });
 
     it('onTemplateChange applies the enemy template', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
 
       const comp = fixture.componentInstance;
@@ -266,8 +276,7 @@ describe('AppComponent', () => {
     });
 
     it('onTemplateChange applies the player template', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
 
       const comp = fixture.componentInstance;
@@ -278,8 +287,7 @@ describe('AppComponent', () => {
     });
 
     it('onTemplateChange falls back to an empty combatant for custom', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
 
       const comp = fixture.componentInstance;
@@ -290,8 +298,7 @@ describe('AppComponent', () => {
     });
 
     it('addCombatant does nothing without an active encounter', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
       combat.encounter.set(null);
 
@@ -302,8 +309,7 @@ describe('AppComponent', () => {
     });
 
     it('adds a single combatant with the entered fields', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [] }));
 
       const comp = fixture.componentInstance;
@@ -325,8 +331,7 @@ describe('AppComponent', () => {
     });
 
     it('adds multiple numbered combatants when addAmount > 1', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [] }));
 
       const comp = fixture.componentInstance;
@@ -342,8 +347,7 @@ describe('AppComponent', () => {
     });
 
     it('forces addAmount to 1 for player type regardless of prior value', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [] }));
 
       const comp = fixture.componentInstance;
@@ -360,8 +364,7 @@ describe('AppComponent', () => {
     });
 
     it('does not overwrite an already-selected target after adding', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [] }));
 
       const comp = fixture.componentInstance;
@@ -379,8 +382,7 @@ describe('AppComponent', () => {
 
   describe('addCombatant initiative ordering', () => {
     it('sorts combatants by initiative descending after adding', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
         makeEncounter({
           combatants: [makeCombatant({ id: 'slow', name: 'Slow Guy', initiative: 5 })],
@@ -401,8 +403,7 @@ describe('AppComponent', () => {
     });
 
     it('keeps the currently active combatant active after a re-sort shifts their position', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
         makeEncounter({
           combatants: [
@@ -429,8 +430,7 @@ describe('AppComponent', () => {
     });
 
     it('defaults to index 0 as active when the encounter had no combatants yet', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [], active_turn_index: 0 }));
 
       const comp = fixture.componentInstance;
@@ -447,17 +447,19 @@ describe('AppComponent', () => {
   });
 
   describe('newEncounter', () => {
-    it('does nothing when the confirm dialog is declined', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+    it('does nothing when the confirm modal is cancelled', () => {
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
 
       const comp = fixture.componentInstance;
       comp.selectedTargetId = 'c1';
       combat.narrative.set('some narration');
-      spyOn(window, 'confirm').and.returnValue(false);
 
       comp.newEncounter();
+      expect(comp.showNewEncounterConfirm).toBeTrue();
+
+      comp.cancelNewEncounter();
+      expect(comp.showNewEncounterConfirm).toBeFalse();
 
       httpMock.expectNone((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
       expect(comp.selectedTargetId).toBe('c1');
@@ -465,8 +467,7 @@ describe('AppComponent', () => {
     });
 
     it('clears form state, narrative, and creates a fresh encounter when confirmed', () => {
-      const fixture = TestBed.createComponent(AppComponent);
-      fixture.detectChanges();
+      const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
 
       const comp = fixture.componentInstance;
@@ -475,10 +476,11 @@ describe('AppComponent', () => {
       comp.selectedType = 'Fire';
       comp.conditionInput = 'Bleed';
       combat.narrative.set('leftover narration');
-      spyOn(window, 'confirm').and.returnValue(true);
 
       comp.newEncounter();
+      comp.confirmNewEncounter();
 
+      expect(comp.showNewEncounterConfirm).toBeFalse();
       expect(comp.selectedTargetId).toBe('');
       expect(comp.damageAmount).toBe(8);
       expect(comp.selectedType).toBe('Slashing');
