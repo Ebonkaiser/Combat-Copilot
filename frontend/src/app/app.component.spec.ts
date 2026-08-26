@@ -27,6 +27,7 @@ describe('AppComponent', () => {
     tactical_tags: [],
     resources: {},
     initiative: 0,
+    weapon_equipped: 'Unarmed',
     ...overrides,
   });
 
@@ -272,7 +273,7 @@ describe('AppComponent', () => {
       comp.selectedTemplate = 'enemy';
       comp.onTemplateChange();
 
-      expect(comp.newCombatant).toEqual({ name: 'Enemy', type: 'enemy', armor_class: 12, max_hp: 20, faction: 'Hostile', initiative: 0 });
+      expect(comp.newCombatant).toEqual({ name: 'Enemy', type: 'enemy', armor_class: 12, max_hp: 20, faction: 'Hostile', initiative: 0, weapon_equipped: 'Unarmed' });
     });
 
     it('onTemplateChange applies the player template', () => {
@@ -283,7 +284,7 @@ describe('AppComponent', () => {
       comp.selectedTemplate = 'player';
       comp.onTemplateChange();
 
-      expect(comp.newCombatant).toEqual({ name: 'Player', type: 'player', armor_class: 15, max_hp: 30, faction: '', initiative: 0 });
+      expect(comp.newCombatant).toEqual({ name: 'Player', type: 'player', armor_class: 15, max_hp: 30, faction: '', initiative: 0, weapon_equipped: 'Unarmed' });
     });
 
     it('onTemplateChange falls back to an empty combatant for custom', () => {

@@ -44,6 +44,24 @@ class CombatStateEngine:
         }
 
     @staticmethod
+    def update_equipment(state: EncounterState, combatant_id: str, weapon_name: str) -> Dict[str, Any]:
+        """
+        Deterministically sets a combatant's equipped weapon. A silent state
+        change (like an HP edit) -- it does not itself trigger narration.
+        """
+        combatant: Combatant = next((c for c in state.combatants if c.id == combatant_id), None)
+        if not combatant:
+            raise ValueError(f"Combatant with ID '{combatant_id}' not found in encounter.")
+
+        combatant.weapon_equipped = weapon_name
+
+        return {
+            "combatant_id": combatant.id,
+            "combatant_name": combatant.name,
+            "weapon_equipped": combatant.weapon_equipped,
+        }
+
+    @staticmethod
     def advance_turn(state: EncounterState) -> None:
         """
         Advances the initiative pointer and increments the round counter when reaching the end.

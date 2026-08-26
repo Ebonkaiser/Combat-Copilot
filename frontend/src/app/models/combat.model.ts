@@ -26,6 +26,7 @@ export interface Combatant {
   resources: Record<string, number>;
   faction?: string;
   initiative: number;
+  weapon_equipped: string;
 }
 
 export interface EncounterState {

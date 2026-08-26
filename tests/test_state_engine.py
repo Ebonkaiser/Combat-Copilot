@@ -58,6 +58,19 @@ def test_damage_clamping_to_zero_and_incapacitation(base_encounter):
     assert "Incapacitated" in base_encounter.combatants[1].conditions
 
 
+def test_update_equipment_sets_weapon(base_encounter):
+    result = CombatStateEngine.update_equipment(base_encounter, "c1", "Rapier")
+
+    assert result["combatant_id"] == "c1"
+    assert result["weapon_equipped"] == "Rapier"
+    assert base_encounter.combatants[0].weapon_equipped == "Rapier"
+
+
+def test_update_equipment_unknown_combatant_raises(base_encounter):
+    with pytest.raises(ValueError):
+        CombatStateEngine.update_equipment(base_encounter, "does_not_exist", "Rapier")
+
+
 def test_advance_turn_cycle(base_encounter):
     assert base_encounter.round == 1
     assert base_encounter.active_turn_index == 0

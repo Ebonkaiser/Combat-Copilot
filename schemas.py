@@ -36,6 +36,7 @@ class Combatant(BaseModel):
     resources: Dict[str, int] = Field(default_factory=dict)
     faction: Optional[str] = None
     initiative: int = 0
+    weapon_equipped: str = "Unarmed"
 
 
 class DamageEvent(BaseModel):
@@ -44,6 +45,10 @@ class DamageEvent(BaseModel):
     damage_amount: int
     damage_type: DamageType
     applied_conditions: List[str] = Field(default_factory=list)
+
+
+class EquipWeaponRequest(BaseModel):
+    weapon_name: str
 
 
 class EncounterState(BaseModel):

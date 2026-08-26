@@ -29,6 +29,13 @@ export class CombatService {
     return this.http.put<EncounterState>(`${this.baseUrl}/encounters/${encounterId}`, payload);
   }
 
+  public equipWeapon(encounterId: string, combatantId: string, weaponName: string): Observable<EncounterState> {
+    return this.http.put<EncounterState>(
+      `${this.baseUrl}/encounters/${encounterId}/combatants/${combatantId}/equipment`,
+      { weapon_name: weaponName }
+    );
+  }
+
   public applyDamageStream(encounterId: string, event: DamageEvent): void {
     this.isStreaming.set(true);
     this.narrative.set('');

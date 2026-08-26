@@ -11,10 +11,11 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from schemas import EncounterState, DamageEvent, Combatant
+from schemas import EncounterState, DamageEvent, Combatant, EquipWeaponRequest
 from knowledge_engine import CombatKnowledgeBase
 from combat_graph import create_combat_engine
 from persistence import StateStore
+from state_engine import CombatStateEngine
 
 load_dotenv()
 logger = logging.getLogger("combat_copilot.server")
@@ -135,6 +136,19 @@ async def update_encounter(encounter_id: str, updated_state: EncounterState, req
         raise HTTPException(status_code=404, detail="Encounter not found")
     store.save_encounter(updated_state)
     return updated_state
+
+
+@app.put("/encounters/{encounter_id}/combatants/{combatant_id}/equipment", response_model=EncounterState)
+async def equip_weapon(encounter_id: str, combatant_id: str, payload: EquipWeaponRequest, request: Request):
+    """Deterministically sets a combatant's equipped weapon (state CRUD, no LLM involved)."""
+    store = request.app.state.store
+    encounter = store.get_encounter(encounter_id)
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found")
+
+    CombatStateEngine.update_equipment(encounter, combatant_id, payload.weapon_name)
+    store.save_encounter(encounter)
+    return encounter
 
 
 @app.post("/encounters/{encounter_id}/damage/stream")

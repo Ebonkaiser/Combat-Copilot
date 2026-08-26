@@ -77,6 +77,8 @@ def generate_narration_node(state: CombatGraphState, llm: ChatGoogleGenerativeAI
             "1. Narrate the blow: 2-3 visceral, fast-paced sentences describing the impact based on damage type and target state.\n"
             "2. If target reaches 0 HP, narrate a decisive defeat.\n"
             "3. Provide a short GM Tactical Note suggesting what the enemy might do next.\n\n"
+            "If a combatant has a specific weapon_equipped value (other than 'Unarmed'), reference it "
+            "directly in narration rather than describing the attack generically.\n\n"
             "CRITICAL: Never recalculate HP or invent numbers. Rely strictly on the provided delta and lore."
         ),
         (

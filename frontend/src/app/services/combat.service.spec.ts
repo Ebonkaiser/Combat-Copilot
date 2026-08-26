@@ -27,6 +27,7 @@ describe('CombatService', () => {
     tactical_tags: [],
     resources: {},
     initiative: 0,
+    weapon_equipped: 'Unarmed',
     ...overrides,
   });
 
@@ -76,6 +77,22 @@ describe('CombatService', () => {
       const req = httpMock.expectOne(`${baseUrl}/encounters/enc_1`);
       expect(req.request.method).toBe('PUT');
       expect(req.request.body).toEqual(payload);
+      req.flush(payload);
+
+      expect(result).toEqual(payload);
+    });
+  });
+
+  describe('equipWeapon', () => {
+    it('PUTs to /encounters/:id/combatants/:id/equipment and returns the response', () => {
+      const payload = makeEncounter({ combatants: [makeCombatant({ weapon_equipped: 'Rapier' })] });
+      let result: EncounterState | undefined;
+
+      service.equipWeapon('enc_1', 'c1', 'Rapier').subscribe((res) => (result = res));
+
+      const req = httpMock.expectOne(`${baseUrl}/encounters/enc_1/combatants/c1/equipment`);
+      expect(req.request.method).toBe('PUT');
+      expect(req.request.body).toEqual({ weapon_name: 'Rapier' });
       req.flush(payload);
 
       expect(result).toEqual(payload);

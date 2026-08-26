@@ -60,6 +60,7 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
               <span>Init: {{ c.initiative }} | AC: {{ c.armor_class }}</span>
             </div>
             <div>HP: {{ c.current_hp }} / {{ c.max_hp }}</div>
+            <div style="color: #888; font-size: 12px;">Weapon: {{ c.weapon_equipped }}</div>
             <div style="background: #eee; width: 100%; height: 8px; margin: 4px 0;">
               <div [style.width.%]="(c.current_hp / c.max_hp) * 100"
                    [style.background]="c.current_hp === 0 ? 'red' : 'green'"
@@ -84,6 +85,16 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
             {{ selectedTargetName() || 'None selected' }}
           </div>
           <div style="font-size: 11px; color: #888; margin-bottom: 8px;">Click a combatant on the left to target them.</div>
+
+          <label>Weapon Equipped: </label>
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <input type="text" [(ngModel)]="weaponInput" placeholder="Rapier, Longbow" style="flex: 1;" />
+            <button (click)="equipWeapon()"
+                    [disabled]="!selectedTargetId || !weaponInput"
+                    style="padding: 6px 10px; background: #6d28d9; color: white; border: none; cursor: pointer;">
+              Equip
+            </button>
+          </div>
 
           <label>Damage Amount: </label>
           <input type="number" [(ngModel)]="damageAmount" style="width: 100%; margin-bottom: 8px;" />
@@ -157,6 +168,9 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
         <label *ngIf="newCombatant.type === 'enemy'" style="color: black;">Faction: </label>
         <input *ngIf="newCombatant.type === 'enemy'" type="text" [(ngModel)]="newCombatant.faction" style="width: 100%; margin-bottom: 8px;" />
 
+        <label style="color: black;">Weapon Equipped: </label>
+        <input type="text" [(ngModel)]="newCombatant.weapon_equipped" style="width: 100%; margin-bottom: 8px;" />
+
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
           <button (click)="showAddModal = false" style="padding: 6px 12px; cursor: pointer; color: black;">Cancel</button>
           <button (click)="addCombatant()" style="padding: 6px 12px; background: #10b981; color: white; border: none; cursor: pointer;">Add</button>
@@ -185,6 +199,7 @@ export class AppComponent implements OnInit {
   damageAmount = 8;
   selectedType: DamageType = 'Slashing';
   conditionInput = '';
+  weaponInput = '';
 
   showAddModal = false;
   showNewEncounterConfirm = false;
@@ -277,6 +292,7 @@ export class AppComponent implements OnInit {
     this.damageAmount = 8;
     this.selectedType = 'Slashing';
     this.conditionInput = '';
+    this.weaponInput = '';
     this.combat.narrative.set('');
 
     this.createFreshEncounter();
@@ -306,6 +322,19 @@ export class AppComponent implements OnInit {
     this.combat.applyDamageStream(enc.encounter_id, event);
   }
 
+  equipWeapon(): void {
+    const enc = this.combat.encounter();
+    if (!enc || !this.selectedTargetId || !this.weaponInput) return;
+
+    this.combat.equipWeapon(enc.encounter_id, this.selectedTargetId, this.weaponInput).subscribe({
+      next: (updatedEnc) => {
+        this.combat.encounter.set(updatedEnc);
+        this.weaponInput = '';
+      },
+      error: (err) => console.error('Failed to equip weapon:', err)
+    });
+  }
+
   nextTurn(): void {
     const enc = this.combat.encounter();
     if (!enc || enc.combatants.length === 0) return;
@@ -330,14 +359,14 @@ export class AppComponent implements OnInit {
   }
 
   getEmptyCombatant(): Partial<Combatant> {
-    return { name: '', type: 'enemy', armor_class: 10, max_hp: 10, faction: '', initiative: 0 };
+    return { name: '', type: 'enemy', armor_class: 10, max_hp: 10, faction: '', initiative: 0, weapon_equipped: 'Unarmed' };
   }
 
   onTemplateChange(): void {
     if (this.selectedTemplate === 'enemy') {
-      this.newCombatant = { name: 'Enemy', type: 'enemy', armor_class: 12, max_hp: 20, faction: 'Hostile', initiative: 0 };
+      this.newCombatant = { name: 'Enemy', type: 'enemy', armor_class: 12, max_hp: 20, faction: 'Hostile', initiative: 0, weapon_equipped: 'Unarmed' };
     } else if (this.selectedTemplate === 'player') {
-      this.newCombatant = { name: 'Player', type: 'player', armor_class: 15, max_hp: 30, faction: '', initiative: 0 };
+      this.newCombatant = { name: 'Player', type: 'player', armor_class: 15, max_hp: 30, faction: '', initiative: 0, weapon_equipped: 'Unarmed' };
     } else {
       this.newCombatant = this.getEmptyCombatant();
     }
@@ -371,7 +400,8 @@ export class AppComponent implements OnInit {
         tactical_tags: [],
         resources: {},
         faction: this.newCombatant.faction || undefined,
-        initiative: this.newCombatant.initiative ?? 0
+        initiative: this.newCombatant.initiative ?? 0,
+        weapon_equipped: this.newCombatant.weapon_equipped || 'Unarmed'
       };
 
       enc.combatants.push(combatant);
