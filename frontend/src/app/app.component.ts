@@ -29,6 +29,7 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
           <h3>Initiative & Health Tracker</h3>
           <div>
             <button (click)="openAddModal()" [disabled]="!combat.encounter()" data-testid="add-combatant-btn" style="padding: 6px; margin-right: 8px; background: #10b981; color: white; border: none; cursor: pointer;">Add Combatant</button>
+            <button (click)="previousTurn()" [disabled]="!canGoToPreviousTurn()" title="Go back to the previous combatant's turn" data-testid="previous-turn-btn" style="padding: 6px; margin-right: 8px; background: #6b7280; color: white; border: none; cursor: pointer;">Previous Turn</button>
             <button (click)="nextTurn()" style="padding: 6px; margin-right: 8px; background: #f59e0b; color: white; border: none; cursor: pointer;">Next Turn</button>
             <button (click)="newEncounter()" style="padding: 6px; background: #dc2626; color: white; border: none; cursor: pointer;">New Encounter</button>
           </div>
@@ -424,6 +425,28 @@ export class AppComponent implements OnInit {
         this.weaponInput = '';
       },
       error: (err) => console.error('Failed to equip weapon:', err)
+    });
+  }
+
+  canGoToPreviousTurn(): boolean {
+    const enc = this.combat.encounter();
+    if (!enc || enc.combatants.length === 0) return false;
+    return !(enc.round === 1 && enc.active_turn_index === 0);
+  }
+
+  previousTurn(): void {
+    const enc = this.combat.encounter();
+    if (!this.canGoToPreviousTurn() || !enc) return;
+
+    enc.active_turn_index--;
+    if (enc.active_turn_index < 0) {
+      enc.active_turn_index = enc.combatants.length - 1;
+      enc.round--;
+    }
+
+    this.combat.updateEncounter(enc.encounter_id, enc).subscribe({
+      next: (updatedEnc) => this.combat.encounter.set(updatedEnc),
+      error: (err) => console.error('Failed to update encounter:', err)
     });
   }
 

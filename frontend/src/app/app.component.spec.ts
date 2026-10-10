@@ -322,6 +322,77 @@ describe('AppComponent', () => {
     });
   });
 
+  describe('previousTurn', () => {
+    it('does nothing when there is no encounter', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
+      combat.encounter.set(null);
+
+      fixture.componentInstance.previousTurn();
+
+      httpMock.expectNone((r) => r.method === 'PUT');
+      expect(combat.encounter()).toBeNull();
+    });
+
+    it('does nothing when there are no combatants', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [] }));
+
+      fixture.componentInstance.previousTurn();
+
+      httpMock.expectNone((r) => r.method === 'PUT');
+      expect(combat.encounter()?.combatants.length).toBe(0);
+    });
+
+    it('is disabled at the very start of the encounter (round 1, first combatant)', () => {
+      const fixture = createReadyFixture();
+      httpMock
+        .expectOne((r) => r.url.endsWith('/encounters'))
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0, round: 1 }));
+
+      const comp = fixture.componentInstance;
+      expect(comp.canGoToPreviousTurn()).toBeFalse();
+
+      comp.previousTurn();
+
+      httpMock.expectNone((r) => r.method === 'PUT');
+    });
+
+    it('steps back the active_turn_index within the same round', () => {
+      const fixture = createReadyFixture();
+      httpMock
+        .expectOne((r) => r.url.endsWith('/encounters'))
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 1, round: 1 }));
+
+      const comp = fixture.componentInstance;
+      expect(comp.canGoToPreviousTurn()).toBeTrue();
+      comp.previousTurn();
+
+      const req = httpMock.expectOne((r) => r.method === 'PUT');
+      const body = req.request.body as EncounterState;
+      expect(body.active_turn_index).toBe(0);
+      expect(body.round).toBe(1);
+
+      req.flush(body);
+      expect(combat.encounter()?.active_turn_index).toBe(0);
+    });
+
+    it('wraps back to the previous round and the last combatant', () => {
+      const fixture = createReadyFixture();
+      httpMock
+        .expectOne((r) => r.url.endsWith('/encounters'))
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0, round: 2 }));
+
+      fixture.componentInstance.previousTurn();
+
+      const req = httpMock.expectOne((r) => r.method === 'PUT');
+      const body = req.request.body as EncounterState;
+      expect(body.active_turn_index).toBe(1);
+      expect(body.round).toBe(1);
+      req.flush(body);
+    });
+  });
+
   describe('add combatant button availability', () => {
     it('disables the Add Combatant button until the initial encounter has loaded, so a fast click cannot silently no-op', () => {
       const fixture = TestBed.createComponent(AppComponent);
