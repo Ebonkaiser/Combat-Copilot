@@ -294,6 +294,17 @@ def test_fallback_narration_includes_conditions():
     assert "Bleed" in text
 
 
+def test_fallback_narration_reports_healing_without_inventing_numbers():
+    state = _sample_graph_state(current_hp=15, max_hp=20, damage=0)
+    state["last_event"]["healing_amount"] = 7
+    text = fallback_narration(state)
+
+    assert "regains 7 HP" in text
+    assert "15/20" in text
+    for number in _NUMBER_RE.findall(text):
+        assert number in {"7", "15", "20"}
+
+
 def test_with_llm_fallback_catches_exception_and_degrades():
     def _always_fails(state):
         raise RuntimeError("simulated Gemini timeout")

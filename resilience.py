@@ -40,6 +40,7 @@ def fallback_narration(state: dict[str, Any]) -> str:
 
     name = (target or {}).get("name") or target_id or "The target"
     damage_entries = event.get("damage_entries") or []
+    healing_amount = event.get("healing_amount") or 0
     current_hp = (target or {}).get("current_hp")
     max_hp = (target or {}).get("max_hp")
     conditions = (target or {}).get("conditions") or []
@@ -51,6 +52,8 @@ def fallback_narration(state: dict[str, Any]) -> str:
         weapon = (attacker or {}).get("weapon_equipped")
         weapon_note = f" with their {weapon}" if weapon and weapon != "Unarmed" else ""
         parts.append(f"{name} takes {total_damage} damage ({breakdown}){weapon_note}.")
+    if healing_amount:
+        parts.append(f"{name} regains {healing_amount} HP.")
     if current_hp is not None and max_hp is not None:
         parts.append(f"HP: {current_hp}/{max_hp}.")
         if current_hp == 0:

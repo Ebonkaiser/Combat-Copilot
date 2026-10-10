@@ -71,6 +71,51 @@ def test_damage_clamping_to_zero_and_incapacitation(base_encounter):
     assert "Incapacitated" in base_encounter.combatants[1].conditions
 
 
+def test_healing_restores_hp(base_encounter):
+    base_encounter.combatants[1].current_hp = 10
+
+    event = DamageEvent(target_id="c2", healing_amount=5)
+    result = CombatStateEngine.apply_damage_event(base_encounter, event)
+
+    assert result["current_hp"] == 15
+    assert result["healing_received"] == 5
+    assert base_encounter.combatants[1].current_hp == 15
+
+
+def test_healing_clamps_to_max_hp(base_encounter):
+    base_encounter.combatants[1].current_hp = 18
+
+    event = DamageEvent(target_id="c2", healing_amount=10)
+    result = CombatStateEngine.apply_damage_event(base_encounter, event)
+
+    assert result["current_hp"] == 20
+    assert base_encounter.combatants[1].current_hp == 20
+
+
+def test_healing_clears_incapacitated_condition(base_encounter):
+    base_encounter.combatants[1].current_hp = 0
+    base_encounter.combatants[1].conditions.append("Incapacitated")
+
+    event = DamageEvent(target_id="c2", healing_amount=5)
+    result = CombatStateEngine.apply_damage_event(base_encounter, event)
+
+    assert result["current_hp"] == 5
+    assert "Incapacitated" not in base_encounter.combatants[1].conditions
+
+
+def test_damage_and_healing_combine_in_one_event(base_encounter):
+    event = DamageEvent(
+        target_id="c2",
+        damage_entries=[{"amount": 8, "damage_type": DamageType.FIRE}],
+        healing_amount=3,
+    )
+    result = CombatStateEngine.apply_damage_event(base_encounter, event)
+
+    # Net change is 8 damage - 3 healing = 5.
+    assert result["current_hp"] == 15
+    assert base_encounter.combatants[1].current_hp == 15
+
+
 def test_apply_condition_add(base_encounter):
     event = DamageEvent(
         target_id="c2",

@@ -47,6 +47,7 @@ export interface DamageEvent {
   attacker_id?: string;
   target_id: string;
   damage_entries: DamageEntry[];
+  healing_amount?: number;
   condition_name?: string;
   condition_action?: ConditionAction;
 }

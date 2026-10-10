@@ -102,7 +102,7 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
                   [title]="combat.isStreaming() ? 'Narration is streaming — please wait.' : (!selectedTargetId ? 'Select a combatant on the left to target before applying damage.' : '')"
                   data-testid="open-damage-modal-btn"
                   style="width: 100%; padding: 8px; background: #2563eb; color: white; border: none; cursor: pointer;">
-            Apply Damage / Manage Conditions
+            Apply Damage / Healing / Conditions
           </button>
           <div *ngIf="!selectedTargetId" style="font-size: 11px; color: #888; margin-top: 4px;">Select a combatant on the left to enable this.</div>
         </div>
@@ -184,7 +184,7 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
     <!-- Damage / Condition Modal -->
     <div *ngIf="showDamageModal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
       <div style="background: white; padding: 20px; border-radius: 8px; width: 460px; font-family: monospace; max-height: 90vh; overflow-y: auto;">
-        <h3 style="margin-top: 0; color: black;">Apply Damage to {{ selectedTargetName() }}</h3>
+        <h3 style="margin-top: 0; color: black;">Update {{ selectedTargetName() }}</h3>
 
         <label style="color: black;">Attacker: </label>
         <select [(ngModel)]="modalAttackerId" style="width: 100%; margin-bottom: 12px;">
@@ -202,6 +202,10 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
         </div>
         <button (click)="addDamageEntryRow()" style="padding: 4px 10px; margin-bottom: 8px; cursor: pointer;">+ Add Damage Type</button>
         <div style="color: black; font-size: 12px; margin-bottom: 16px;">Total: {{ modalTotalDamage() }} damage</div>
+
+        <div style="color: black; font-weight: bold; margin-bottom: 6px;">Healing</div>
+        <input type="number" [(ngModel)]="modalHealingAmount" min="0" placeholder="Amount" style="width: 100%; margin-bottom: 4px;" />
+        <div style="font-size: 11px; color: #666; margin-bottom: 16px;">Applies to {{ selectedTargetName() }} regardless of whose turn it is.</div>
 
         <div style="color: black; font-weight: bold; margin-bottom: 6px;">Status Condition</div>
         <div style="display: flex; gap: 8px; margin-bottom: 8px;">
@@ -242,6 +246,7 @@ export class AppComponent implements OnInit {
   showDamageModal = false;
   modalAttackerId = '';
   modalDamageEntries: DamageEntry[] = [{ amount: 0, damage_type: 'Slashing' }];
+  modalHealingAmount = 0;
   modalConditionName = '';
   modalConditionAction: ConditionAction | null = null;
 
@@ -351,6 +356,7 @@ export class AppComponent implements OnInit {
 
   resetDamageModalState(): void {
     this.modalDamageEntries = [{ amount: 0, damage_type: 'Slashing' }];
+    this.modalHealingAmount = 0;
     this.modalConditionName = '';
     this.modalConditionAction = null;
   }
@@ -393,8 +399,9 @@ export class AppComponent implements OnInit {
   canSubmitDamageModal(): boolean {
     if (this.combat.isStreaming() || !this.selectedTargetId) return false;
     const hasDamage = this.modalDamageEntries.some((e) => Number(e.amount) > 0);
+    const hasHealing = Number(this.modalHealingAmount) > 0;
     const hasCondition = !!this.modalConditionAction && !!this.modalConditionName.trim();
-    return hasDamage || hasCondition;
+    return hasDamage || hasHealing || hasCondition;
   }
 
   submitAction(): void {
@@ -407,6 +414,7 @@ export class AppComponent implements OnInit {
       damage_entries: this.modalDamageEntries
         .filter((e) => Number(e.amount) > 0)
         .map((e) => ({ amount: Number(e.amount), damage_type: e.damage_type })),
+      healing_amount: Number(this.modalHealingAmount) || 0,
       condition_name: this.modalConditionAction ? this.modalConditionName.trim() : undefined,
       condition_action: this.modalConditionAction ?? undefined,
     };

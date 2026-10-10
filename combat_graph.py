@@ -18,6 +18,8 @@ def mutate_state_node(state: CombatGraphState) -> Dict[str, Any]:
     target_id = event["target_id"]
     damage_entries = event.get("damage_entries", [])
     total_damage = sum(entry["amount"] for entry in damage_entries)
+    healing_amount = event.get("healing_amount", 0)
+    net_change = total_damage - healing_amount
     condition_name = event.get("condition_name")
     condition_action = event.get("condition_action")
 
@@ -29,7 +31,7 @@ def mutate_state_node(state: CombatGraphState) -> Dict[str, Any]:
 
     # Apply deterministic clamping
     previous_hp = target["current_hp"]
-    target["current_hp"] = max(0, min(target["max_hp"], target["current_hp"] - total_damage))
+    target["current_hp"] = max(0, min(target["max_hp"], target["current_hp"] - net_change))
 
     # Auto-conditions
     if target["current_hp"] == 0 and "Incapacitated" not in target["conditions"]:
@@ -90,6 +92,8 @@ def generate_narration_node(state: CombatGraphState, llm: ChatGoogleGenerativeAI
             "(e.g. 6 Piercing + 5 Cold). Reference every damage type present, not just the first, and treat the total as one combined hit.\n"
             "   - If Event Delta.attacker_id is set, look up that combatant by id in Target Current State and reference their "
             "weapon_equipped (if not 'Unarmed') as the weapon used in the attack.\n"
+            "   - If Event Delta.healing_amount is greater than 0, narrate restorative/healing effects instead of (or alongside, "
+            "if damage_entries is also present) the wound -- e.g. magic mending flesh, a potion taking hold, a second wind.\n"
             "2. If target reaches 0 HP, narrate a decisive defeat.\n"
             "3. If Event Delta.condition_action is 'remove', narrate that condition fading or ending rather than being newly applied.\n"
             "4. Provide a short GM Tactical Note suggesting what the enemy might do next.\n\n"

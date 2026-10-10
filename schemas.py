@@ -53,6 +53,7 @@ class DamageEvent(BaseModel):
     attacker_id: Optional[str] = None
     target_id: str
     damage_entries: List[DamageEntry] = Field(default_factory=list)
+    healing_amount: int = 0
     condition_name: Optional[str] = None
     condition_action: Optional[ConditionAction] = None
 

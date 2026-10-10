@@ -173,10 +173,53 @@ describe('AppComponent', () => {
           { amount: 6, damage_type: 'Piercing' },
           { amount: 5, damage_type: 'Cold' },
         ],
+        healing_amount: 0,
         condition_name: 'Prone',
         condition_action: 'add',
       });
       expect(comp.showDamageModal).toBeFalse();
+    });
+
+    it('allows a healing-only change with no damage entries, targeting whoever is selected regardless of turn', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 1 })
+      );
+
+      const comp = fixture.componentInstance;
+      // c1 is selected even though it isn't c1's turn (active_turn_index points at c2).
+      comp.selectedTargetId = 'c1';
+      comp.modalDamageEntries = [{ amount: 0, damage_type: 'Slashing' }];
+      comp.modalHealingAmount = 12;
+
+      spyOn(combat, 'applyDamageStream');
+      comp.submitAction();
+
+      expect(combat.applyDamageStream).toHaveBeenCalledWith(
+        'enc_1',
+        jasmine.objectContaining({ target_id: 'c1', damage_entries: [], healing_amount: 12 })
+      );
+    });
+
+    it('combines healing and damage in the same event when both are set', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalDamageEntries = [{ amount: 8, damage_type: 'Fire' }];
+      comp.modalHealingAmount = 3;
+
+      spyOn(combat, 'applyDamageStream');
+      comp.submitAction();
+
+      expect(combat.applyDamageStream).toHaveBeenCalledWith(
+        'enc_1',
+        jasmine.objectContaining({
+          damage_entries: [{ amount: 8, damage_type: 'Fire' }],
+          healing_amount: 3,
+        })
+      );
     });
 
     it('omits condition fields when no condition action is chosen', () => {
@@ -230,12 +273,14 @@ describe('AppComponent', () => {
       const comp = fixture.componentInstance;
       comp.selectedTargetId = 'c1';
       comp.modalDamageEntries = [{ amount: 42, damage_type: 'Fire' }];
+      comp.modalHealingAmount = 25;
 
       comp.openDamageModal();
 
       expect(comp.showDamageModal).toBeTrue();
       expect(comp.modalAttackerId).toBe('attacker_1');
       expect(comp.modalDamageEntries).toEqual([{ amount: 0, damage_type: 'Slashing' }]);
+      expect(comp.modalHealingAmount).toBe(0);
       expect(comp.modalConditionAction).toBeNull();
     });
 

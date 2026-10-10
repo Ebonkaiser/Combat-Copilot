@@ -15,9 +15,10 @@ class CombatStateEngine:
 
         previous_hp = target.current_hp
         total_damage = sum(entry.amount for entry in event.damage_entries)
+        net_change = total_damage - event.healing_amount
 
         # 1. Boundary Clamping: 0 <= HP <= MaxHP
-        target.current_hp = max(0, min(target.max_hp, target.current_hp - total_damage))
+        target.current_hp = max(0, min(target.max_hp, target.current_hp - net_change))
 
         # 2. State Transition: Incapacitated when hitting 0 HP
         if target.current_hp == 0 and "Incapacitated" not in target.conditions:
@@ -43,6 +44,7 @@ class CombatStateEngine:
                 {"amount": entry.amount, "damage_type": entry.damage_type.value}
                 for entry in event.damage_entries
             ],
+            "healing_received": event.healing_amount,
             "previous_hp": previous_hp,
             "current_hp": target.current_hp,
             "is_down": target.current_hp == 0,
