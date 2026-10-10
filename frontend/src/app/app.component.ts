@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { retry, timer } from 'rxjs';
 import { CombatService } from './services/combat.service';
-import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from './models/combat.model';
+import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, EncounterState, EntityType } from './models/combat.model';
 
 @Component({
   selector: 'app-root',
@@ -78,7 +78,7 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
 
       <!-- Column 2: Action Entry & Narrative -->
       <div style="flex: 1; border: 1px solid #444; padding: 15px; border-radius: 6px;">
-        <h3>Manual Damage Entry</h3>
+        <h3>Combat Actions</h3>
         <div style="margin-bottom: 15px;">
           <label>Target: </label>
           <div style="width: 100%; margin-bottom: 4px; padding: 6px; background: #1e1e1e; color: #d4d4d4; border: 1px solid #444; border-radius: 4px; box-sizing: border-box;">
@@ -96,22 +96,12 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
             </button>
           </div>
 
-          <label>Damage Amount: </label>
-          <input type="number" [(ngModel)]="damageAmount" style="width: 100%; margin-bottom: 8px;" />
-
-          <label>Damage Type: </label>
-          <select [(ngModel)]="selectedType" style="width: 100%; margin-bottom: 8px;">
-            <option *ngFor="let t of damageTypes" [value]="t">{{ t }}</option>
-          </select>
-
-          <label>Apply Condition: </label>
-          <input type="text" [(ngModel)]="conditionInput" placeholder="Bleed, Stunned" style="width: 100%; margin-bottom: 12px;" />
-
-          <button (click)="submitAction()"
+          <button (click)="openDamageModal()"
                   [disabled]="combat.isStreaming() || !selectedTargetId"
                   [title]="combat.isStreaming() ? 'Narration is streaming — please wait.' : (!selectedTargetId ? 'Select a combatant on the left to target before applying damage.' : '')"
+                  data-testid="open-damage-modal-btn"
                   style="width: 100%; padding: 8px; background: #2563eb; color: white; border: none; cursor: pointer;">
-            Apply Damage & Stream Narration
+            Apply Damage / Manage Conditions
           </button>
           <div *ngIf="!selectedTargetId" style="font-size: 11px; color: #888; margin-top: 4px;">Select a combatant on the left to enable this.</div>
         </div>
@@ -189,6 +179,56 @@ import { Combatant, DamageEvent, DamageType, EncounterState, EntityType } from '
         </div>
       </div>
     </div>
+
+    <!-- Damage / Condition Modal -->
+    <div *ngIf="showDamageModal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+      <div style="background: white; padding: 20px; border-radius: 8px; width: 460px; font-family: monospace; max-height: 90vh; overflow-y: auto;">
+        <h3 style="margin-top: 0; color: black;">Apply Damage to {{ selectedTargetName() }}</h3>
+
+        <label style="color: black;">Attacker: </label>
+        <select [(ngModel)]="modalAttackerId" style="width: 100%; margin-bottom: 12px;">
+          <option value="">-- Unspecified --</option>
+          <option *ngFor="let c of attackerOptions()" [value]="c.id">{{ c.name }} ({{ c.weapon_equipped }})</option>
+        </select>
+
+        <div style="color: black; font-weight: bold; margin-bottom: 6px;">Damage</div>
+        <div *ngFor="let entry of modalDamageEntries; let i = index" style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <input type="number" [(ngModel)]="entry.amount" min="0" placeholder="Amount" style="width: 90px;" />
+          <select [(ngModel)]="entry.damage_type" style="flex: 1;">
+            <option *ngFor="let t of damageTypes" [value]="t">{{ t }}</option>
+          </select>
+          <button (click)="removeDamageEntryRow(i)" [disabled]="modalDamageEntries.length === 1" style="padding: 4px 8px; cursor: pointer;">x</button>
+        </div>
+        <button (click)="addDamageEntryRow()" style="padding: 4px 10px; margin-bottom: 8px; cursor: pointer;">+ Add Damage Type</button>
+        <div style="color: black; font-size: 12px; margin-bottom: 16px;">Total: {{ modalTotalDamage() }} damage</div>
+
+        <div style="color: black; font-weight: bold; margin-bottom: 6px;">Status Condition</div>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <button (click)="modalConditionAction = modalConditionAction === 'add' ? null : 'add'"
+                  [style.background]="modalConditionAction === 'add' ? '#10b981' : '#eee'"
+                  [style.color]="modalConditionAction === 'add' ? 'white' : 'black'"
+                  style="flex: 1; padding: 6px; border: none; cursor: pointer;">
+            Add Condition
+          </button>
+          <button (click)="modalConditionAction = modalConditionAction === 'remove' ? null : 'remove'"
+                  [style.background]="modalConditionAction === 'remove' ? '#dc2626' : '#eee'"
+                  [style.color]="modalConditionAction === 'remove' ? 'white' : 'black'"
+                  style="flex: 1; padding: 6px; border: none; cursor: pointer;">
+            Remove Condition
+          </button>
+        </div>
+        <input *ngIf="modalConditionAction" type="text" [(ngModel)]="modalConditionName" placeholder="Stunned, Prone, Poisoned..." style="width: 100%; margin-bottom: 12px;" />
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+          <button (click)="closeDamageModal()" style="padding: 6px 12px; cursor: pointer; color: black;">Cancel</button>
+          <button (click)="submitAction()"
+                  [disabled]="!canSubmitDamageModal()"
+                  style="padding: 6px 12px; background: #2563eb; color: white; border: none; cursor: pointer;">
+            Apply & Stream Narration
+          </button>
+        </div>
+      </div>
+    </div>
   `,
 })
 export class AppComponent implements OnInit {
@@ -196,10 +236,13 @@ export class AppComponent implements OnInit {
   private isServer = isPlatformServer(inject(PLATFORM_ID));
 
   selectedTargetId = '';
-  damageAmount = 8;
-  selectedType: DamageType = 'Slashing';
-  conditionInput = '';
   weaponInput = '';
+
+  showDamageModal = false;
+  modalAttackerId = '';
+  modalDamageEntries: DamageEntry[] = [{ amount: 0, damage_type: 'Slashing' }];
+  modalConditionName = '';
+  modalConditionAction: ConditionAction | null = null;
 
   showAddModal = false;
   showNewEncounterConfirm = false;
@@ -289,10 +332,9 @@ export class AppComponent implements OnInit {
   confirmNewEncounter(): void {
     this.showNewEncounterConfirm = false;
     this.selectedTargetId = '';
-    this.damageAmount = 8;
-    this.selectedType = 'Slashing';
-    this.conditionInput = '';
     this.weaponInput = '';
+    this.showDamageModal = false;
+    this.resetDamageModalState();
     this.combat.narrative.set('');
 
     this.createFreshEncounter();
@@ -306,20 +348,70 @@ export class AppComponent implements OnInit {
     return this.combat.encounter()?.combatants.find((c) => c.id === this.selectedTargetId)?.name;
   }
 
+  resetDamageModalState(): void {
+    this.modalDamageEntries = [{ amount: 0, damage_type: 'Slashing' }];
+    this.modalConditionName = '';
+    this.modalConditionAction = null;
+  }
+
+  openDamageModal(): void {
+    const enc = this.combat.encounter();
+    this.resetDamageModalState();
+
+    // Default the attacker to whoever's turn it is, unless that's the target itself.
+    const activeCombatant = enc?.combatants[enc.active_turn_index];
+    this.modalAttackerId =
+      activeCombatant && activeCombatant.id !== this.selectedTargetId ? activeCombatant.id : '';
+
+    this.showDamageModal = true;
+  }
+
+  closeDamageModal(): void {
+    this.showDamageModal = false;
+  }
+
+  attackerOptions(): Combatant[] {
+    const enc = this.combat.encounter();
+    if (!enc) return [];
+    return enc.combatants.filter((c) => c.id !== this.selectedTargetId);
+  }
+
+  addDamageEntryRow(): void {
+    this.modalDamageEntries.push({ amount: 0, damage_type: 'Slashing' });
+  }
+
+  removeDamageEntryRow(index: number): void {
+    if (this.modalDamageEntries.length <= 1) return;
+    this.modalDamageEntries.splice(index, 1);
+  }
+
+  modalTotalDamage(): number {
+    return this.modalDamageEntries.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }
+
+  canSubmitDamageModal(): boolean {
+    if (this.combat.isStreaming() || !this.selectedTargetId) return false;
+    const hasDamage = this.modalDamageEntries.some((e) => Number(e.amount) > 0);
+    const hasCondition = !!this.modalConditionAction && !!this.modalConditionName.trim();
+    return hasDamage || hasCondition;
+  }
+
   submitAction(): void {
     const enc = this.combat.encounter();
-    if (!enc) return;
+    if (!enc || !this.canSubmitDamageModal()) return;
 
     const event: DamageEvent = {
       target_id: this.selectedTargetId,
-      damage_amount: this.damageAmount,
-      damage_type: this.selectedType,
-      applied_conditions: this.conditionInput
-        ? this.conditionInput.split(',').map((c) => c.trim())
-        : [],
+      attacker_id: this.modalAttackerId || undefined,
+      damage_entries: this.modalDamageEntries
+        .filter((e) => Number(e.amount) > 0)
+        .map((e) => ({ amount: Number(e.amount), damage_type: e.damage_type })),
+      condition_name: this.modalConditionAction ? this.modalConditionName.trim() : undefined,
+      condition_action: this.modalConditionAction ?? undefined,
     };
 
     this.combat.applyDamageStream(enc.encounter_id, event);
+    this.showDamageModal = false;
   }
 
   equipWeapon(): void {

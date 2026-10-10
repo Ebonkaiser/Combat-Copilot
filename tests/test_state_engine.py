@@ -35,8 +35,7 @@ def base_encounter():
 def test_apply_damage_within_bounds(base_encounter):
     event = DamageEvent(
         target_id="c2",
-        damage_amount=8,
-        damage_type=DamageType.SLASHING,
+        damage_entries=[{"amount": 8, "damage_type": DamageType.SLASHING}],
     )
     result = CombatStateEngine.apply_damage_event(base_encounter, event)
 
@@ -45,17 +44,57 @@ def test_apply_damage_within_bounds(base_encounter):
     assert base_encounter.combatants[1].current_hp == 12
 
 
+def test_apply_damage_sums_multiple_damage_types(base_encounter):
+    event = DamageEvent(
+        target_id="c2",
+        damage_entries=[
+            {"amount": 6, "damage_type": DamageType.PIERCING},
+            {"amount": 5, "damage_type": DamageType.COLD},
+        ],
+    )
+    result = CombatStateEngine.apply_damage_event(base_encounter, event)
+
+    assert result["damage_taken"] == 11
+    assert result["current_hp"] == 9
+    assert base_encounter.combatants[1].current_hp == 9
+
+
 def test_damage_clamping_to_zero_and_incapacitation(base_encounter):
     event = DamageEvent(
         target_id="c2",
-        damage_amount=50,  # Overkill
-        damage_type=DamageType.FIRE,
+        damage_entries=[{"amount": 50, "damage_type": DamageType.FIRE}],  # Overkill
     )
     result = CombatStateEngine.apply_damage_event(base_encounter, event)
 
     assert result["current_hp"] == 0
     assert result["is_down"] is True
     assert "Incapacitated" in base_encounter.combatants[1].conditions
+
+
+def test_apply_condition_add(base_encounter):
+    event = DamageEvent(
+        target_id="c2",
+        condition_name="Stunned",
+        condition_action="add",
+    )
+    result = CombatStateEngine.apply_damage_event(base_encounter, event)
+
+    assert "Stunned" in result["conditions"]
+    assert "Stunned" in base_encounter.combatants[1].conditions
+
+
+def test_apply_condition_remove(base_encounter):
+    base_encounter.combatants[1].conditions.append("Stunned")
+
+    event = DamageEvent(
+        target_id="c2",
+        condition_name="Stunned",
+        condition_action="remove",
+    )
+    result = CombatStateEngine.apply_damage_event(base_encounter, event)
+
+    assert "Stunned" not in result["conditions"]
+    assert "Stunned" not in base_encounter.combatants[1].conditions
 
 
 def test_update_equipment_sets_weapon(base_encounter):

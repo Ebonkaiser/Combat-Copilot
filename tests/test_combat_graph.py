@@ -44,9 +44,9 @@ def test_combat_graph_execution(combat_engine):
         ],
         "last_event": {
             "target_id": "enemy_1",
-            "damage_amount": 15,
-            "damage_type": DamageType.SLASHING.value,
-            "applied_conditions": ["Bleed"]
+            "damage_entries": [{"amount": 15, "damage_type": DamageType.SLASHING.value}],
+            "condition_name": "Bleed",
+            "condition_action": "add"
         },
         "retrieved_lore": "",
         "streamed_narration": ""

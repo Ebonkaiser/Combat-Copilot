@@ -134,42 +134,136 @@ describe('AppComponent', () => {
       expect(combat.applyDamageStream).not.toHaveBeenCalled();
     });
 
-    it('builds a DamageEvent from form fields and streams it', () => {
+    it('does nothing when the modal has no damage and no condition change', () => {
       const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
 
       const comp = fixture.componentInstance;
       comp.selectedTargetId = 'c1';
-      comp.damageAmount = 15;
-      comp.selectedType = 'Fire';
-      comp.conditionInput = 'Burning, Prone';
+      comp.modalDamageEntries = [{ amount: 0, damage_type: 'Slashing' }];
+      comp.modalConditionAction = null;
+
+      spyOn(combat, 'applyDamageStream');
+      comp.submitAction();
+
+      expect(combat.applyDamageStream).not.toHaveBeenCalled();
+    });
+
+    it('builds a DamageEvent summing multiple damage types and streams it', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalAttackerId = 'attacker_1';
+      comp.modalDamageEntries = [
+        { amount: 6, damage_type: 'Piercing' },
+        { amount: 5, damage_type: 'Cold' },
+      ];
+      comp.modalConditionAction = 'add';
+      comp.modalConditionName = 'Prone';
 
       spyOn(combat, 'applyDamageStream');
       comp.submitAction();
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith('enc_1', {
         target_id: 'c1',
-        damage_amount: 15,
-        damage_type: 'Fire',
-        applied_conditions: ['Burning', 'Prone'],
+        attacker_id: 'attacker_1',
+        damage_entries: [
+          { amount: 6, damage_type: 'Piercing' },
+          { amount: 5, damage_type: 'Cold' },
+        ],
+        condition_name: 'Prone',
+        condition_action: 'add',
       });
+      expect(comp.showDamageModal).toBeFalse();
     });
 
-    it('sends an empty conditions array when conditionInput is blank', () => {
+    it('omits condition fields when no condition action is chosen', () => {
       const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
 
       const comp = fixture.componentInstance;
       comp.selectedTargetId = 'c1';
-      comp.conditionInput = '';
+      comp.modalDamageEntries = [{ amount: 8, damage_type: 'Fire' }];
+      comp.modalConditionAction = null;
 
       spyOn(combat, 'applyDamageStream');
       comp.submitAction();
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith(
         'enc_1',
-        jasmine.objectContaining({ applied_conditions: [] })
+        jasmine.objectContaining({ condition_name: undefined, condition_action: undefined })
       );
+    });
+
+    it('allows a condition-only change with no damage entries', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalDamageEntries = [{ amount: 0, damage_type: 'Slashing' }];
+      comp.modalConditionAction = 'remove';
+      comp.modalConditionName = 'Prone';
+
+      spyOn(combat, 'applyDamageStream');
+      comp.submitAction();
+
+      expect(combat.applyDamageStream).toHaveBeenCalledWith(
+        'enc_1',
+        jasmine.objectContaining({ damage_entries: [], condition_name: 'Prone', condition_action: 'remove' })
+      );
+    });
+  });
+
+  describe('damage modal', () => {
+    it('openDamageModal resets entries and defaults the attacker to the active combatant', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({
+          combatants: [makeCombatant({ id: 'attacker_1' }), makeCombatant({ id: 'c1' })],
+          active_turn_index: 0,
+        })
+      );
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalDamageEntries = [{ amount: 42, damage_type: 'Fire' }];
+
+      comp.openDamageModal();
+
+      expect(comp.showDamageModal).toBeTrue();
+      expect(comp.modalAttackerId).toBe('attacker_1');
+      expect(comp.modalDamageEntries).toEqual([{ amount: 0, damage_type: 'Slashing' }]);
+      expect(comp.modalConditionAction).toBeNull();
+    });
+
+    it('leaves the attacker unspecified when the active combatant is the target itself', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({ combatants: [makeCombatant({ id: 'c1' })], active_turn_index: 0 })
+      );
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+
+      comp.openDamageModal();
+
+      expect(comp.modalAttackerId).toBe('');
+    });
+
+    it('modalTotalDamage sums all entries', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
+
+      const comp = fixture.componentInstance;
+      comp.modalDamageEntries = [
+        { amount: 6, damage_type: 'Piercing' },
+        { amount: 5, damage_type: 'Cold' },
+      ];
+
+      expect(comp.modalTotalDamage()).toBe(11);
     });
   });
 
@@ -473,9 +567,10 @@ describe('AppComponent', () => {
 
       const comp = fixture.componentInstance;
       comp.selectedTargetId = 'c1';
-      comp.damageAmount = 99;
-      comp.selectedType = 'Fire';
-      comp.conditionInput = 'Bleed';
+      comp.showDamageModal = true;
+      comp.modalDamageEntries = [{ amount: 99, damage_type: 'Fire' }];
+      comp.modalConditionAction = 'add';
+      comp.modalConditionName = 'Bleed';
       combat.narrative.set('leftover narration');
 
       comp.newEncounter();
@@ -483,9 +578,9 @@ describe('AppComponent', () => {
 
       expect(comp.showNewEncounterConfirm).toBeFalse();
       expect(comp.selectedTargetId).toBe('');
-      expect(comp.damageAmount).toBe(8);
-      expect(comp.selectedType).toBe('Slashing');
-      expect(comp.conditionInput).toBe('');
+      expect(comp.showDamageModal).toBeFalse();
+      expect(comp.modalDamageEntries).toEqual([{ amount: 0, damage_type: 'Slashing' }]);
+      expect(comp.modalConditionAction).toBeNull();
       expect(combat.narrative()).toBe('');
 
       const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));

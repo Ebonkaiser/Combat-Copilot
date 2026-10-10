@@ -39,12 +39,22 @@ class Combatant(BaseModel):
     weapon_equipped: str = "Unarmed"
 
 
+class ConditionAction(str, Enum):
+    ADD = "add"
+    REMOVE = "remove"
+
+
+class DamageEntry(BaseModel):
+    amount: int
+    damage_type: DamageType
+
+
 class DamageEvent(BaseModel):
     attacker_id: Optional[str] = None
     target_id: str
-    damage_amount: int
-    damage_type: DamageType
-    applied_conditions: List[str] = Field(default_factory=list)
+    damage_entries: List[DamageEntry] = Field(default_factory=list)
+    condition_name: Optional[str] = None
+    condition_action: Optional[ConditionAction] = None
 
 
 class EquipWeaponRequest(BaseModel):

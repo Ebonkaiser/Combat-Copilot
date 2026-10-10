@@ -36,10 +36,17 @@ export interface EncounterState {
   combatants: Combatant[];
 }
 
+export type ConditionAction = 'add' | 'remove';
+
+export interface DamageEntry {
+  amount: number;
+  damage_type: DamageType;
+}
+
 export interface DamageEvent {
   attacker_id?: string;
   target_id: string;
-  damage_amount: number;
-  damage_type: DamageType;
-  applied_conditions: string[];
+  damage_entries: DamageEntry[];
+  condition_name?: string;
+  condition_action?: ConditionAction;
 }

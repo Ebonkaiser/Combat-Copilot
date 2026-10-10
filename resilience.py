@@ -35,21 +35,29 @@ def fallback_narration(state: dict[str, Any]) -> str:
     target_id = event.get("target_id")
     target = next((c for c in combatants if c.get("id") == target_id), None)
 
+    attacker_id = event.get("attacker_id")
+    attacker = next((c for c in combatants if c.get("id") == attacker_id), None) if attacker_id else None
+
     name = (target or {}).get("name") or target_id or "The target"
-    dmg = event.get("damage_amount")
-    dmg_type = event.get("damage_type", "")
+    damage_entries = event.get("damage_entries") or []
     current_hp = (target or {}).get("current_hp")
     max_hp = (target or {}).get("max_hp")
-    conditions = (target or {}).get("conditions") or event.get("applied_conditions") or []
+    conditions = (target or {}).get("conditions") or []
 
     parts = ["[Narration unavailable -- combat log]"]
-    if dmg is not None:
-        dmg_line = f"{name} takes {dmg} {dmg_type} damage.".replace("  ", " ").strip()
-        parts.append(dmg_line)
+    if damage_entries:
+        total_damage = sum(entry.get("amount", 0) for entry in damage_entries)
+        breakdown = ", ".join(f"{entry.get('amount')} {entry.get('damage_type')}" for entry in damage_entries)
+        weapon = (attacker or {}).get("weapon_equipped")
+        weapon_note = f" with their {weapon}" if weapon and weapon != "Unarmed" else ""
+        parts.append(f"{name} takes {total_damage} damage ({breakdown}){weapon_note}.")
     if current_hp is not None and max_hp is not None:
         parts.append(f"HP: {current_hp}/{max_hp}.")
         if current_hp == 0:
             parts.append(f"{name} is down.")
+    condition_name = event.get("condition_name")
+    if condition_name and event.get("condition_action") == "remove":
+        parts.append(f"{condition_name} condition removed from {name}.")
     if conditions:
         parts.append(f"Conditions: {', '.join(conditions)}.")
     return " ".join(parts)

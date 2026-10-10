@@ -123,9 +123,7 @@ describe('CombatService', () => {
 
     const event: DamageEvent = {
       target_id: 'c1',
-      damage_amount: 8,
-      damage_type: 'Slashing',
-      applied_conditions: [],
+      damage_entries: [{ amount: 8, damage_type: 'Slashing' }],
     };
 
     it('sets isStreaming and clears narrative immediately, POSTs to the stream endpoint', () => {

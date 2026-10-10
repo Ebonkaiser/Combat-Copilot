@@ -103,6 +103,6 @@ def test_damage_stream_returns_503_before_ready(monkeypatch):
     monkeypatch.setattr(server, "_load_knowledge_and_engine", _hang_then_succeed)
     with TestClient(server.app) as client:
         resp = client.post("/encounters/enc_1/damage/stream", json={
-            "target_id": "x", "damage_amount": 1, "damage_type": "Slashing", "applied_conditions": []
+            "target_id": "x", "damage_entries": [{"amount": 1, "damage_type": "Slashing"}]
         })
         assert resp.status_code == 503

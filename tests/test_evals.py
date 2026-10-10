@@ -254,9 +254,7 @@ def _sample_graph_state(current_hp: int, max_hp: int = 20, damage: int = 8, cond
     return {
         "last_event": {
             "target_id": "enemy_1",
-            "damage_amount": damage,
-            "damage_type": "Slashing",
-            "applied_conditions": conditions or [],
+            "damage_entries": [{"amount": damage, "damage_type": "Slashing"}] if damage else [],
         },
         "combatants": [
             {

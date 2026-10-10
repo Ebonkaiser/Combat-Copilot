@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from schemas import EncounterState, DamageEvent, Combatant
+from schemas import EncounterState, DamageEvent, Combatant, ConditionAction
 
 
 class CombatStateEngine:
@@ -14,9 +14,10 @@ class CombatStateEngine:
             raise ValueError(f"Target with ID '{event.target_id}' not found in encounter.")
 
         previous_hp = target.current_hp
-        
+        total_damage = sum(entry.amount for entry in event.damage_entries)
+
         # 1. Boundary Clamping: 0 <= HP <= MaxHP
-        target.current_hp = max(0, min(target.max_hp, target.current_hp - event.damage_amount))
+        target.current_hp = max(0, min(target.max_hp, target.current_hp - total_damage))
 
         # 2. State Transition: Incapacitated when hitting 0 HP
         if target.current_hp == 0 and "Incapacitated" not in target.conditions:
@@ -24,17 +25,24 @@ class CombatStateEngine:
         elif target.current_hp > 0 and "Incapacitated" in target.conditions:
             target.conditions.remove("Incapacitated")
 
-        # 3. Idempotent Condition Application
-        for cond in event.applied_conditions:
-            if cond not in target.conditions:
-                target.conditions.append(cond)
+        # 3. Manual condition add/remove (idempotent either way)
+        if event.condition_name:
+            if event.condition_action == ConditionAction.REMOVE:
+                if event.condition_name in target.conditions:
+                    target.conditions.remove(event.condition_name)
+            else:
+                if event.condition_name not in target.conditions:
+                    target.conditions.append(event.condition_name)
 
         # 4. Context Payload returned for downstream nodes / logging
         return {
             "target_id": target.id,
             "target_name": target.name,
-            "damage_taken": event.damage_amount,
-            "damage_type": event.damage_type.value,
+            "damage_taken": total_damage,
+            "damage_entries": [
+                {"amount": entry.amount, "damage_type": entry.damage_type.value}
+                for entry in event.damage_entries
+            ],
             "previous_hp": previous_hp,
             "current_hp": target.current_hp,
             "is_down": target.current_hp == 0,
