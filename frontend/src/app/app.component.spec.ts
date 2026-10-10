@@ -367,6 +367,35 @@ describe('AppComponent', () => {
     });
   });
 
+  describe('saveGmNotes', () => {
+    it('does nothing when there is no encounter', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
+      combat.encounter.set(null);
+
+      fixture.componentInstance.saveGmNotes();
+
+      httpMock.expectNone((r) => r.method === 'PUT');
+    });
+
+    it('PUTs the encounter with the edited notes and updates the signal on success', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ gm_notes: '' }));
+
+      const enc = combat.encounter();
+      if (enc) enc.gm_notes = 'The bridge is collapsing -- combatants near it take extra fall risk.';
+
+      fixture.componentInstance.saveGmNotes();
+
+      const req = httpMock.expectOne((r) => r.method === 'PUT');
+      const body = req.request.body as EncounterState;
+      expect(body.gm_notes).toBe('The bridge is collapsing -- combatants near it take extra fall risk.');
+
+      req.flush(body);
+      expect(combat.encounter()?.gm_notes).toBe('The bridge is collapsing -- combatants near it take extra fall risk.');
+    });
+  });
+
   describe('previousTurn', () => {
     it('does nothing when there is no encounter', () => {
       const fixture = createReadyFixture();

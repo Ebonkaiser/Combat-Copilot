@@ -97,20 +97,25 @@ def generate_narration_node(state: CombatGraphState, llm: ChatGoogleGenerativeAI
             "2. If target reaches 0 HP, narrate a decisive defeat.\n"
             "3. If Event Delta.condition_action is 'remove', narrate that condition fading or ending rather than being newly applied.\n"
             "4. Provide a short GM Tactical Note suggesting what the enemy might do next.\n\n"
+            "GM Notes is free-form context the GM typed in about this specific battle/scene -- things that don't fit the "
+            "structured state (terrain, an NPC's secret motivation, a plot twist, etc). Weave it into the narration and "
+            "tactical note where relevant, but it never overrides the state data and never justifies inventing numbers.\n\n"
             "CRITICAL: Never recalculate HP or invent numbers. Rely strictly on the provided delta and lore."
         ),
         (
             "human",
             "Event Delta: {last_event}\n"
             "Target Current State: {combatants}\n"
+            "GM Notes: {gm_notes}\n"
             "Lore Context: {retrieved_lore}"
         )
     ])
-    
+
     chain = prompt | llm | StrOutputParser()
     result = chain.invoke({
         "last_event": state["last_event"],
         "combatants": state["combatants"],
+        "gm_notes": state.get("gm_notes", ""),
         "retrieved_lore": state["retrieved_lore"]
     })
     return {"streamed_narration": result}

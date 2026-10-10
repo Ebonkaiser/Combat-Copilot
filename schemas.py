@@ -67,6 +67,7 @@ class EncounterState(BaseModel):
     round: int = 1
     active_turn_index: int = 0
     combatants: List[Combatant] = Field(default_factory=list)
+    gm_notes: str = ""
 
 
 # LangGraph State Schema
@@ -76,5 +77,6 @@ class CombatGraphState(TypedDict):
     active_turn_index: int
     combatants: List[Dict[str, Any]]
     last_event: Dict[str, Any]
+    gm_notes: str
     retrieved_lore: str
     streamed_narration: str

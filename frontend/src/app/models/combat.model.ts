@@ -34,6 +34,7 @@ export interface EncounterState {
   round: number;
   active_turn_index: number;
   combatants: Combatant[];
+  gm_notes?: string;
 }
 
 export type ConditionAction = 'add' | 'remove';

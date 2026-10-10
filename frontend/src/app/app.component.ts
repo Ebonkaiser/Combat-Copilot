@@ -22,6 +22,18 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
       <a (click)="retryConnection()" style="color: white; text-decoration: underline; cursor: pointer;">try again</a>.
     </div>
 
+    <div *ngIf="combat.encounter() as enc" style="padding: 0 20px 20px; font-family: monospace;">
+      <label style="display: block; margin-bottom: 4px;">
+        Battle Notes
+        <span style="color: #888; font-size: 11px;">(context for the AI narration -- terrain, NPC motivations, plot twists, anything that won't fit the structured state)</span>
+      </label>
+      <textarea [(ngModel)]="enc.gm_notes"
+                (blur)="saveGmNotes()"
+                rows="3"
+                placeholder="e.g. The guard captain is secretly sympathetic to the players and will hesitate before landing a killing blow..."
+                style="width: 100%; box-sizing: border-box; font-family: monospace; background: #1e1e1e; color: #d4d4d4; border: 1px solid #444; border-radius: 4px; padding: 8px; resize: vertical;"></textarea>
+    </div>
+
     <div style="display: flex; gap: 20px; padding: 20px; font-family: monospace;">
       <!-- Column 1: Combat Tracker -->
       <div style="flex: 1; border: 1px solid #444; padding: 15px; border-radius: 6px; position: relative;">
@@ -313,6 +325,7 @@ export class AppComponent implements OnInit {
       round: 1,
       active_turn_index: 0,
       combatants: [],
+      gm_notes: '',
     };
 
     // By the time this runs, pollHealth() has already confirmed the
@@ -433,6 +446,16 @@ export class AppComponent implements OnInit {
         this.weaponInput = '';
       },
       error: (err) => console.error('Failed to equip weapon:', err)
+    });
+  }
+
+  saveGmNotes(): void {
+    const enc = this.combat.encounter();
+    if (!enc) return;
+
+    this.combat.updateEncounter(enc.encounter_id, enc).subscribe({
+      next: (updatedEnc) => this.combat.encounter.set(updatedEnc),
+      error: (err) => console.error('Failed to save GM notes:', err)
     });
   }
 

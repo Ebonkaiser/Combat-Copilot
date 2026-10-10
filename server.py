@@ -169,6 +169,7 @@ async def apply_damage_and_stream(encounter_id: str, event: DamageEvent, state=D
         "active_turn_index": encounter.active_turn_index,
         "combatants": [c.model_dump() for c in encounter.combatants],
         "last_event": event.model_dump(),
+        "gm_notes": encounter.gm_notes,
         "retrieved_lore": "",
         "streamed_narration": ""
     }

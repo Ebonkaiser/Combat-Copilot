@@ -99,6 +99,29 @@ def test_equip_weapon_404_when_encounter_missing(monkeypatch):
         assert resp.status_code == 404
 
 
+def test_gm_notes_round_trip_through_persistence(monkeypatch):
+    monkeypatch.setattr(server, "_load_knowledge_and_engine", _fake_load_success)
+    with TestClient(server.app) as client:
+        resp = client.post("/encounters", json={
+            "encounter_id": "enc_1", "round": 1, "active_turn_index": 0, "combatants": [],
+            "gm_notes": "The bridge is collapsing -- combatants near it take extra fall risk.",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["gm_notes"] == "The bridge is collapsing -- combatants near it take extra fall risk."
+
+        followup = client.get("/encounters/enc_1")
+        assert followup.json()["gm_notes"] == "The bridge is collapsing -- combatants near it take extra fall risk."
+
+
+def test_gm_notes_defaults_to_empty_string(monkeypatch):
+    monkeypatch.setattr(server, "_load_knowledge_and_engine", _fake_load_success)
+    with TestClient(server.app) as client:
+        resp = client.post("/encounters", json={
+            "encounter_id": "enc_1", "round": 1, "active_turn_index": 0, "combatants": [],
+        })
+        assert resp.json()["gm_notes"] == ""
+
+
 def test_damage_stream_returns_503_before_ready(monkeypatch):
     monkeypatch.setattr(server, "_load_knowledge_and_engine", _hang_then_succeed)
     with TestClient(server.app) as client:

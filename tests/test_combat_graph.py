@@ -48,6 +48,7 @@ def test_combat_graph_execution(combat_engine):
             "condition_name": "Bleed",
             "condition_action": "add"
         },
+        "gm_notes": "The guard is fighting on a crumbling rope bridge over a ravine.",
         "retrieved_lore": "",
         "streamed_narration": ""
     }
