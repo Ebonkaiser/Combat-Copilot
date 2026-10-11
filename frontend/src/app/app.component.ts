@@ -22,18 +22,6 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
       <a (click)="retryConnection()" style="color: white; text-decoration: underline; cursor: pointer;">try again</a>.
     </div>
 
-    <div *ngIf="combat.encounter() as enc" style="padding: 0 20px 20px; font-family: monospace;">
-      <label style="display: block; margin-bottom: 4px;">
-        Battle Notes
-        <span style="color: #888; font-size: 11px;">(context for the AI narration -- terrain, NPC motivations, plot twists, anything that won't fit the structured state)</span>
-      </label>
-      <textarea [(ngModel)]="enc.gm_notes"
-                (blur)="saveGmNotes()"
-                rows="3"
-                placeholder="e.g. The guard captain is secretly sympathetic to the players and will hesitate before landing a killing blow..."
-                style="width: 100%; box-sizing: border-box; font-family: monospace; background: #1e1e1e; color: #d4d4d4; border: 1px solid #444; border-radius: 4px; padding: 8px; resize: vertical;"></textarea>
-    </div>
-
     <div style="display: flex; gap: 20px; padding: 20px; font-family: monospace;">
       <!-- Column 1: Combat Tracker -->
       <div style="flex: 1; border: 1px solid #444; padding: 15px; border-radius: 6px; position: relative;">
@@ -99,22 +87,12 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
           </div>
           <div style="font-size: 11px; color: #888; margin-bottom: 8px;">Click a combatant on the left to target them.</div>
 
-          <label>Weapon Equipped: </label>
-          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-            <input type="text" [(ngModel)]="weaponInput" placeholder="Rapier, Longbow" style="flex: 1;" />
-            <button (click)="equipWeapon()"
-                    [disabled]="!selectedTargetId || !weaponInput"
-                    style="padding: 6px 10px; background: #6d28d9; color: white; border: none; cursor: pointer;">
-              Equip
-            </button>
-          </div>
-
           <button (click)="openDamageModal()"
                   [disabled]="combat.isStreaming() || !selectedTargetId"
                   [title]="combat.isStreaming() ? 'Narration is streaming — please wait.' : (!selectedTargetId ? 'Select a combatant on the left to target before applying damage.' : '')"
                   data-testid="open-damage-modal-btn"
                   style="width: 100%; padding: 8px; background: #2563eb; color: white; border: none; cursor: pointer;">
-            Apply Damage / Healing / Conditions
+            Manage Combatant
           </button>
           <div *ngIf="!selectedTargetId" style="font-size: 11px; color: #888; margin-top: 4px;">Select a combatant on the left to enable this.</div>
         </div>
@@ -194,15 +172,22 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
     </div>
 
     <!-- Damage / Condition Modal -->
-    <div *ngIf="showDamageModal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+    <div *ngIf="showDamageModal && combat.encounter() as enc" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
       <div style="background: white; padding: 20px; border-radius: 8px; width: 460px; font-family: monospace; max-height: 90vh; overflow-y: auto;">
         <h3 style="margin-top: 0; color: black;">Update {{ selectedTargetName() }}</h3>
 
         <label style="color: black;">Attacker: </label>
-        <select [(ngModel)]="modalAttackerId" style="width: 100%; margin-bottom: 12px;">
+        <select [(ngModel)]="modalAttackerId" (change)="hydrateWeaponFromAttacker()" style="width: 100%; margin-bottom: 12px;">
           <option value="">-- Unspecified --</option>
           <option *ngFor="let c of attackerOptions()" [value]="c.id">{{ c.name }} ({{ c.weapon_equipped }})</option>
         </select>
+
+        <label style="color: black;">Weapon Equipped (by the attacker above): </label>
+        <input type="text" [(ngModel)]="modalWeaponInput" [disabled]="!modalAttackerId"
+               placeholder="Rapier, Longbow" style="width: 100%; margin-bottom: 4px; box-sizing: border-box;" />
+        <div style="font-size: 11px; color: #666; margin-bottom: 12px;">
+          {{ modalAttackerId ? 'Edits what the selected attacker is wielding.' : 'Select an attacker above to edit their weapon.' }}
+        </div>
 
         <div style="color: black; font-weight: bold; margin-bottom: 6px;">Damage</div>
         <div *ngFor="let entry of modalDamageEntries; let i = index" style="display: flex; gap: 8px; margin-bottom: 8px;">
@@ -234,14 +219,20 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
             Remove Condition
           </button>
         </div>
-        <input *ngIf="modalConditionAction" type="text" [(ngModel)]="modalConditionName" placeholder="Stunned, Prone, Poisoned..." style="width: 100%; margin-bottom: 12px;" />
+        <input *ngIf="modalConditionAction" type="text" [(ngModel)]="modalConditionName" placeholder="Stunned, Prone, Poisoned..." style="width: 100%; margin-bottom: 16px;" />
+
+        <div style="color: black; font-weight: bold; margin-bottom: 6px;">Battle Notes</div>
+        <div style="font-size: 11px; color: #666; margin-bottom: 6px;">Context for the AI narration -- terrain, NPC motivations, plot twists, anything that won't fit the structured state.</div>
+        <textarea [(ngModel)]="enc.gm_notes" rows="2"
+                  placeholder="e.g. The guard captain is secretly sympathetic to the players and will hesitate before landing a killing blow..."
+                  style="width: 100%; box-sizing: border-box; font-family: monospace; margin-bottom: 4px; resize: vertical;"></textarea>
 
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
           <button (click)="closeDamageModal()" style="padding: 6px 12px; cursor: pointer; color: black;">Cancel</button>
           <button (click)="submitAction()"
                   [disabled]="!canSubmitDamageModal()"
                   style="padding: 6px 12px; background: #2563eb; color: white; border: none; cursor: pointer;">
-            Apply & Stream Narration
+            Save Changes
           </button>
         </div>
       </div>
@@ -253,10 +244,12 @@ export class AppComponent implements OnInit {
   private isServer = isPlatformServer(inject(PLATFORM_ID));
 
   selectedTargetId = '';
-  weaponInput = '';
 
   showDamageModal = false;
   modalAttackerId = '';
+  modalWeaponInput = '';
+  modalOriginalWeapon = '';
+  modalOriginalNotes = '';
   modalDamageEntries: DamageEntry[] = [{ amount: 0, damage_type: 'Slashing' }];
   modalHealingAmount = 0;
   modalConditionName = '';
@@ -351,7 +344,6 @@ export class AppComponent implements OnInit {
   confirmNewEncounter(): void {
     this.showNewEncounterConfirm = false;
     this.selectedTargetId = '';
-    this.weaponInput = '';
     this.showDamageModal = false;
     this.resetDamageModalState();
     this.combat.narrative.set('');
@@ -372,6 +364,8 @@ export class AppComponent implements OnInit {
     this.modalHealingAmount = 0;
     this.modalConditionName = '';
     this.modalConditionAction = null;
+    this.modalWeaponInput = '';
+    this.modalOriginalWeapon = '';
   }
 
   openDamageModal(): void {
@@ -382,6 +376,9 @@ export class AppComponent implements OnInit {
     const activeCombatant = enc?.combatants[enc.active_turn_index];
     this.modalAttackerId =
       activeCombatant && activeCombatant.id !== this.selectedTargetId ? activeCombatant.id : '';
+
+    this.hydrateWeaponFromAttacker();
+    this.modalOriginalNotes = enc?.gm_notes ?? '';
 
     this.showDamageModal = true;
   }
@@ -394,6 +391,13 @@ export class AppComponent implements OnInit {
     const enc = this.combat.encounter();
     if (!enc) return [];
     return enc.combatants.filter((c) => c.id !== this.selectedTargetId);
+  }
+
+  hydrateWeaponFromAttacker(): void {
+    const enc = this.combat.encounter();
+    const attacker = enc?.combatants.find((c) => c.id === this.modalAttackerId);
+    this.modalWeaponInput = attacker?.weapon_equipped ?? '';
+    this.modalOriginalWeapon = this.modalWeaponInput;
   }
 
   addDamageEntryRow(): void {
@@ -410,53 +414,60 @@ export class AppComponent implements OnInit {
   }
 
   canSubmitDamageModal(): boolean {
-    if (this.combat.isStreaming() || !this.selectedTargetId) return false;
+    const enc = this.combat.encounter();
+    if (this.combat.isStreaming() || !this.selectedTargetId || !enc) return false;
+
     const hasDamage = this.modalDamageEntries.some((e) => Number(e.amount) > 0);
     const hasHealing = Number(this.modalHealingAmount) > 0;
     const hasCondition = !!this.modalConditionAction && !!this.modalConditionName.trim();
-    return hasDamage || hasHealing || hasCondition;
+    const weaponChanged = !!this.modalAttackerId && this.modalWeaponInput.trim() !== this.modalOriginalWeapon;
+    const notesChanged = (enc.gm_notes ?? '') !== this.modalOriginalNotes;
+
+    return hasDamage || hasHealing || hasCondition || weaponChanged || notesChanged;
   }
 
   submitAction(): void {
     const enc = this.combat.encounter();
     if (!enc || !this.canSubmitDamageModal()) return;
 
-    const event: DamageEvent = {
-      target_id: this.selectedTargetId,
-      attacker_id: this.modalAttackerId || undefined,
-      damage_entries: this.modalDamageEntries
-        .filter((e) => Number(e.amount) > 0)
-        .map((e) => ({ amount: Number(e.amount), damage_type: e.damage_type })),
-      healing_amount: Number(this.modalHealingAmount) || 0,
-      condition_name: this.modalConditionAction ? this.modalConditionName.trim() : undefined,
-      condition_action: this.modalConditionAction ?? undefined,
-    };
+    if (this.modalAttackerId) {
+      const attacker = enc.combatants.find((c) => c.id === this.modalAttackerId);
+      if (attacker) {
+        attacker.weapon_equipped = this.modalWeaponInput.trim() || 'Unarmed';
+      }
+    }
 
-    this.combat.applyDamageStream(enc.encounter_id, event);
-    this.showDamageModal = false;
-  }
+    const hasNarratedAction =
+      this.modalDamageEntries.some((e) => Number(e.amount) > 0) ||
+      Number(this.modalHealingAmount) > 0 ||
+      (!!this.modalConditionAction && !!this.modalConditionName.trim());
 
-  equipWeapon(): void {
-    const enc = this.combat.encounter();
-    if (!enc || !this.selectedTargetId || !this.weaponInput) return;
-
-    this.combat.equipWeapon(enc.encounter_id, this.selectedTargetId, this.weaponInput).subscribe({
+    // Weapon equips and Battle Notes edits are silent state changes (same
+    // tier as an HP edit) -- always persisted via the plain encounter PUT.
+    // The narrated damage/heal/condition stream only fires on top of that
+    // when there's actually something to narrate.
+    this.combat.updateEncounter(enc.encounter_id, enc).subscribe({
       next: (updatedEnc) => {
         this.combat.encounter.set(updatedEnc);
-        this.weaponInput = '';
+
+        if (hasNarratedAction) {
+          const event: DamageEvent = {
+            target_id: this.selectedTargetId,
+            attacker_id: this.modalAttackerId || undefined,
+            damage_entries: this.modalDamageEntries
+              .filter((e) => Number(e.amount) > 0)
+              .map((e) => ({ amount: Number(e.amount), damage_type: e.damage_type })),
+            healing_amount: Number(this.modalHealingAmount) || 0,
+            condition_name: this.modalConditionAction ? this.modalConditionName.trim() : undefined,
+            condition_action: this.modalConditionAction ?? undefined,
+          };
+          this.combat.applyDamageStream(updatedEnc.encounter_id, event);
+        }
       },
-      error: (err) => console.error('Failed to equip weapon:', err)
+      error: (err) => console.error('Failed to save encounter updates:', err)
     });
-  }
 
-  saveGmNotes(): void {
-    const enc = this.combat.encounter();
-    if (!enc) return;
-
-    this.combat.updateEncounter(enc.encounter_id, enc).subscribe({
-      next: (updatedEnc) => this.combat.encounter.set(updatedEnc),
-      error: (err) => console.error('Failed to save GM notes:', err)
-    });
+    this.showDamageModal = false;
   }
 
   canGoToPreviousTurn(): boolean {
@@ -522,15 +533,12 @@ export class AppComponent implements OnInit {
     const enc = this.combat.encounter();
     if (!enc) return;
 
-    // Captured before mutation so a re-sort below can preserve *who* is
-    // acting, not merely which array index currently means "active".
-    const activeCombatant = enc.combatants[enc.active_turn_index];
-
     if (this.newCombatant.type === 'player') {
       this.addAmount = 1;
     }
 
     const newIds: string[] = [];
+    const newCombatants: Combatant[] = [];
     for (let i = 0; i < this.addAmount; i++) {
       const id = this.newCombatant.type + '_' + Math.floor(Math.random() * 1000000);
       const name = this.addAmount > 1 ? `${this.newCombatant.name || 'Unknown'} ${i + 1}` : (this.newCombatant.name || 'Unknown');
@@ -550,19 +558,25 @@ export class AppComponent implements OnInit {
         weapon_equipped: this.newCombatant.weapon_equipped || 'Unarmed'
       };
 
-      enc.combatants.push(combatant);
+      newCombatants.push(combatant);
       newIds.push(id);
     }
 
-    // Highest initiative acts first (standard tabletop convention). Re-sort
-    // by identity, not index: if a newly added combatant's initiative
-    // outranks the currently active one, active_turn_index must follow the
-    // active combatant to their new position -- otherwise the turn pointer
-    // would silently land on a different combatant after the reorder.
-    enc.combatants.sort((a, b) => b.initiative - a.initiative);
-    enc.active_turn_index = activeCombatant
-      ? enc.combatants.findIndex((c) => c.id === activeCombatant.id)
-      : 0;
+    // Combatants up through the currently active one have already had (or
+    // are having) their turn this round -- splicing new arrivals in there
+    // via a full re-sort would retroactively rewrite a round already in
+    // progress, and if a high-initiative newcomer landed at an index at or
+    // before the active pointer, forward-only turn advancement would skip
+    // them entirely until the *next* round. Instead, only insert new
+    // arrivals into the not-yet-acted remainder of this round, sorted by
+    // initiative within just that remainder, so a high-roller who joins
+    // mid-round still gets a turn this round instead of being skipped.
+    const alreadyActedOrActive = enc.combatants.slice(0, enc.active_turn_index + 1);
+    const notYetActed = enc.combatants.slice(enc.active_turn_index + 1);
+    notYetActed.push(...newCombatants);
+    notYetActed.sort((a, b) => b.initiative - a.initiative);
+
+    enc.combatants = alreadyActedOrActive.concat(notYetActed);
 
     this.combat.updateEncounter(enc.encounter_id, enc).subscribe({
       next: (updatedEnc) => {

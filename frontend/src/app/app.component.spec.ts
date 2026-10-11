@@ -122,6 +122,13 @@ describe('AppComponent', () => {
   });
 
   describe('submitAction', () => {
+    function flushEncounterPut(): EncounterState {
+      const req = httpMock.expectOne((r) => r.method === 'PUT' && r.url.endsWith('/enc_1'));
+      const body = req.request.body as EncounterState;
+      req.flush(body);
+      return body;
+    }
+
     it('does nothing when there is no active encounter', () => {
       const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
@@ -131,10 +138,11 @@ describe('AppComponent', () => {
 
       fixture.componentInstance.submitAction();
 
+      httpMock.expectNone((r) => r.method === 'PUT');
       expect(combat.applyDamageStream).not.toHaveBeenCalled();
     });
 
-    it('does nothing when the modal has no damage and no condition change', () => {
+    it('does nothing when nothing in the modal changed', () => {
       const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
 
@@ -146,12 +154,15 @@ describe('AppComponent', () => {
       spyOn(combat, 'applyDamageStream');
       comp.submitAction();
 
+      httpMock.expectNone((r) => r.method === 'PUT');
       expect(combat.applyDamageStream).not.toHaveBeenCalled();
     });
 
-    it('builds a DamageEvent summing multiple damage types and streams it', () => {
+    it('builds a DamageEvent summing multiple damage types and streams it after saving', () => {
       const fixture = createReadyFixture();
-      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [makeCombatant()] }));
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({ combatants: [makeCombatant(), makeCombatant({ id: 'attacker_1', name: 'Attacker' })] })
+      );
 
       const comp = fixture.componentInstance;
       comp.selectedTargetId = 'c1';
@@ -165,6 +176,9 @@ describe('AppComponent', () => {
 
       spyOn(combat, 'applyDamageStream');
       comp.submitAction();
+      expect(comp.showDamageModal).toBeFalse();
+
+      flushEncounterPut();
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith('enc_1', {
         target_id: 'c1',
@@ -177,7 +191,6 @@ describe('AppComponent', () => {
         condition_name: 'Prone',
         condition_action: 'add',
       });
-      expect(comp.showDamageModal).toBeFalse();
     });
 
     it('allows a healing-only change with no damage entries, targeting whoever is selected regardless of turn', () => {
@@ -194,6 +207,7 @@ describe('AppComponent', () => {
 
       spyOn(combat, 'applyDamageStream');
       comp.submitAction();
+      flushEncounterPut();
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith(
         'enc_1',
@@ -212,6 +226,7 @@ describe('AppComponent', () => {
 
       spyOn(combat, 'applyDamageStream');
       comp.submitAction();
+      flushEncounterPut();
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith(
         'enc_1',
@@ -233,6 +248,7 @@ describe('AppComponent', () => {
 
       spyOn(combat, 'applyDamageStream');
       comp.submitAction();
+      flushEncounterPut();
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith(
         'enc_1',
@@ -252,21 +268,63 @@ describe('AppComponent', () => {
 
       spyOn(combat, 'applyDamageStream');
       comp.submitAction();
+      flushEncounterPut();
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith(
         'enc_1',
         jasmine.objectContaining({ damage_entries: [], condition_name: 'Prone', condition_action: 'remove' })
       );
     });
+
+    it('saves a weapon change on the chosen attacker without triggering narration', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({ combatants: [makeCombatant(), makeCombatant({ id: 'attacker_1', name: 'Attacker', weapon_equipped: 'Unarmed' })] })
+      );
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalAttackerId = 'attacker_1';
+      comp.modalOriginalWeapon = 'Unarmed';
+      comp.modalWeaponInput = 'Rapier';
+
+      spyOn(combat, 'applyDamageStream');
+      comp.submitAction();
+
+      const body = flushEncounterPut();
+      expect(body.combatants.find((c) => c.id === 'attacker_1')?.weapon_equipped).toBe('Rapier');
+      expect(combat.applyDamageStream).not.toHaveBeenCalled();
+    });
+
+    it('saves a Battle Notes change without triggering narration', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({ combatants: [makeCombatant()], gm_notes: '' })
+      );
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalOriginalNotes = '';
+      const enc = combat.encounter();
+      if (enc) enc.gm_notes = 'The bridge is collapsing underfoot.';
+
+      spyOn(combat, 'applyDamageStream');
+      comp.submitAction();
+
+      const body = flushEncounterPut();
+      expect(body.gm_notes).toBe('The bridge is collapsing underfoot.');
+      expect(combat.applyDamageStream).not.toHaveBeenCalled();
+    });
   });
 
   describe('damage modal', () => {
-    it('openDamageModal resets entries and defaults the attacker to the active combatant', () => {
+    it('openDamageModal resets entries, defaults the attacker to the active combatant, and hydrates their weapon + notes', () => {
       const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
         makeEncounter({
-          combatants: [makeCombatant({ id: 'attacker_1' }), makeCombatant({ id: 'c1' })],
+          combatants: [makeCombatant({ id: 'attacker_1', weapon_equipped: 'Longbow' }), makeCombatant({ id: 'c1' })],
           active_turn_index: 0,
+          gm_notes: 'Existing scene notes.',
         })
       );
 
@@ -274,6 +332,7 @@ describe('AppComponent', () => {
       comp.selectedTargetId = 'c1';
       comp.modalDamageEntries = [{ amount: 42, damage_type: 'Fire' }];
       comp.modalHealingAmount = 25;
+      comp.modalWeaponInput = 'stale value';
 
       comp.openDamageModal();
 
@@ -282,6 +341,9 @@ describe('AppComponent', () => {
       expect(comp.modalDamageEntries).toEqual([{ amount: 0, damage_type: 'Slashing' }]);
       expect(comp.modalHealingAmount).toBe(0);
       expect(comp.modalConditionAction).toBeNull();
+      expect(comp.modalWeaponInput).toBe('Longbow');
+      expect(comp.modalOriginalWeapon).toBe('Longbow');
+      expect(comp.modalOriginalNotes).toBe('Existing scene notes.');
     });
 
     it('leaves the attacker unspecified when the active combatant is the target itself', () => {
@@ -296,6 +358,31 @@ describe('AppComponent', () => {
       comp.openDamageModal();
 
       expect(comp.modalAttackerId).toBe('');
+      expect(comp.modalWeaponInput).toBe('');
+    });
+
+    it('hydrateWeaponFromAttacker re-syncs the weapon field when the attacker selection changes', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({
+          combatants: [
+            makeCombatant({ id: 'a', weapon_equipped: 'Rapier' }),
+            makeCombatant({ id: 'b', weapon_equipped: 'Dagger' }),
+            makeCombatant({ id: 'c1' }),
+          ],
+        })
+      );
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalAttackerId = 'a';
+      comp.hydrateWeaponFromAttacker();
+      expect(comp.modalWeaponInput).toBe('Rapier');
+
+      comp.modalAttackerId = 'b';
+      comp.hydrateWeaponFromAttacker();
+      expect(comp.modalWeaponInput).toBe('Dagger');
+      expect(comp.modalOriginalWeapon).toBe('Dagger');
     });
 
     it('modalTotalDamage sums all entries', () => {
@@ -309,6 +396,41 @@ describe('AppComponent', () => {
       ];
 
       expect(comp.modalTotalDamage()).toBe(11);
+    });
+  });
+
+  describe('canSubmitDamageModal', () => {
+    it('is enabled when the weapon input differs from the attacker\'s stored weapon', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({ combatants: [makeCombatant(), makeCombatant({ id: 'attacker_1', weapon_equipped: 'Unarmed' })] })
+      );
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalAttackerId = 'attacker_1';
+      comp.modalOriginalWeapon = 'Unarmed';
+      comp.modalWeaponInput = 'Unarmed';
+      expect(comp.canSubmitDamageModal()).toBeFalse();
+
+      comp.modalWeaponInput = 'Greatsword';
+      expect(comp.canSubmitDamageModal()).toBeTrue();
+    });
+
+    it('is enabled when Battle Notes differ from the snapshot taken at modal-open time', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({ combatants: [makeCombatant()], gm_notes: 'original' })
+      );
+
+      const comp = fixture.componentInstance;
+      comp.selectedTargetId = 'c1';
+      comp.modalOriginalNotes = 'original';
+      expect(comp.canSubmitDamageModal()).toBeFalse();
+
+      const enc = combat.encounter();
+      if (enc) enc.gm_notes = 'updated mid-fight';
+      expect(comp.canSubmitDamageModal()).toBeTrue();
     });
   });
 
@@ -364,35 +486,6 @@ describe('AppComponent', () => {
       expect(body.active_turn_index).toBe(0);
       expect(body.round).toBe(2);
       req.flush(body);
-    });
-  });
-
-  describe('saveGmNotes', () => {
-    it('does nothing when there is no encounter', () => {
-      const fixture = createReadyFixture();
-      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter());
-      combat.encounter.set(null);
-
-      fixture.componentInstance.saveGmNotes();
-
-      httpMock.expectNone((r) => r.method === 'PUT');
-    });
-
-    it('PUTs the encounter with the edited notes and updates the signal on success', () => {
-      const fixture = createReadyFixture();
-      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ gm_notes: '' }));
-
-      const enc = combat.encounter();
-      if (enc) enc.gm_notes = 'The bridge is collapsing -- combatants near it take extra fall risk.';
-
-      fixture.componentInstance.saveGmNotes();
-
-      const req = httpMock.expectOne((r) => r.method === 'PUT');
-      const body = req.request.body as EncounterState;
-      expect(body.gm_notes).toBe('The bridge is collapsing -- combatants near it take extra fall risk.');
-
-      req.flush(body);
-      expect(combat.encounter()?.gm_notes).toBe('The bridge is collapsing -- combatants near it take extra fall risk.');
     });
   });
 
@@ -621,12 +714,12 @@ describe('AppComponent', () => {
   });
 
   describe('addCombatant initiative ordering', () => {
-    it('sorts combatants by initiative descending after adding', () => {
+    it('queues a higher-initiative newcomer right after the active combatant instead of disturbing them', () => {
       const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
         makeEncounter({
           combatants: [makeCombatant({ id: 'slow', name: 'Slow Guy', initiative: 5 })],
-          active_turn_index: 0,
+          active_turn_index: 0, // Slow Guy is currently acting
         })
       );
 
@@ -638,11 +731,17 @@ describe('AppComponent', () => {
 
       const req = httpMock.expectOne((r) => r.method === 'PUT');
       const body = req.request.body as EncounterState;
-      expect(body.combatants.map((c) => c.name)).toEqual(['Fast Guy', 'Slow Guy']);
+      // Slow Guy is mid-turn -- a global initiative resort would have put
+      // Fast Guy ahead of him, which an increment-only pointer can never
+      // reach again this round (the bug: Fast Guy skipped until next
+      // round). Instead Fast Guy lands right after Slow Guy, and the
+      // pointer doesn't move since nothing before/at it changed.
+      expect(body.combatants.map((c) => c.name)).toEqual(['Slow Guy', 'Fast Guy']);
+      expect(body.active_turn_index).toBe(0);
       req.flush(body);
     });
 
-    it('keeps the currently active combatant active after a re-sort shifts their position', () => {
+    it('never disturbs the position of the currently active combatant, even when a newcomer outranks everyone', () => {
       const fixture = createReadyFixture();
       httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
         makeEncounter({
@@ -655,8 +754,6 @@ describe('AppComponent', () => {
       );
 
       const comp = fixture.componentInstance;
-      // A new combatant with higher initiative than both existing ones --
-      // inserted at the front, pushing Bob from index 1 to index 2.
       comp.newCombatant = { name: 'Zara', type: 'enemy', armor_class: 12, max_hp: 10, initiative: 20 };
       comp.addAmount = 1;
 
@@ -664,9 +761,49 @@ describe('AppComponent', () => {
 
       const req = httpMock.expectOne((r) => r.method === 'PUT');
       const body = req.request.body as EncounterState;
-      expect(body.combatants.map((c) => c.name)).toEqual(['Zara', 'Alice', 'Bob']);
-      expect(body.active_turn_index).toBe(2); // still Bob, now at index 2
+      // Alice already acted and Bob is acting now -- Zara (highest
+      // initiative) joins at the tail, since there's nothing left to act
+      // this round for her to outrank. The pointer stays on Bob at the
+      // same index; no relocation search needed.
+      expect(body.combatants.map((c) => c.name)).toEqual(['Alice', 'Bob', 'Zara']);
+      expect(body.active_turn_index).toBe(1);
       req.flush(body);
+    });
+
+    it('does not skip a newcomer who outranks the active combatant -- they act this round, right after', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({
+          combatants: [
+            makeCombatant({ id: 'a', name: 'Alice', initiative: 10 }),
+            makeCombatant({ id: 'b', name: 'Bob', initiative: 5 }),
+          ],
+          active_turn_index: 0, // Alice is currently acting
+        })
+      );
+
+      const comp = fixture.componentInstance;
+      // Zara outranks both Alice (active) and Bob (not yet acted this round).
+      comp.newCombatant = { name: 'Zara', type: 'enemy', armor_class: 12, max_hp: 10, initiative: 20 };
+      comp.addAmount = 1;
+
+      comp.addCombatant();
+
+      const req = httpMock.expectOne((r) => r.method === 'PUT');
+      const body = req.request.body as EncounterState;
+      // Alice (mid-turn) is untouched; Zara slots ahead of Bob, who hasn't
+      // acted yet this round -- so Zara is queued up next, not skipped to
+      // next round.
+      expect(body.combatants.map((c) => c.name)).toEqual(['Alice', 'Zara', 'Bob']);
+      expect(body.active_turn_index).toBe(0);
+      req.flush(body);
+
+      // Clicking Next Turn proves Zara is actually visited this round.
+      fixture.componentInstance.nextTurn();
+      const nextReq = httpMock.expectOne((r) => r.method === 'PUT');
+      expect((nextReq.request.body as EncounterState).active_turn_index).toBe(1);
+      nextReq.flush(nextReq.request.body);
+      expect(combat.encounter()?.combatants[combat.encounter()!.active_turn_index].name).toBe('Zara');
     });
 
     it('defaults to index 0 as active when the encounter had no combatants yet', () => {
