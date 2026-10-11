@@ -34,7 +34,10 @@ def _load_knowledge_and_engine(store: StateStore) -> dict:
         kb.ingest_directory("./data/rules", category="rules")
         store.mark_category_ingested("rules")
 
-    llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", streaming=True)
+    # Temperature raised above the provider default (and explicit, rather than implicit)
+    # for narration variety -- phrasing should never repeat itself, while the strict
+    # no-invented-numbers rule is enforced by instruction + deterministic state, not sampling.
+    llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", streaming=True, temperature=1.0)
     combat_engine = create_combat_engine(kb=kb, llm=llm)
     return {"kb": kb, "llm": llm, "combat_engine": combat_engine}
 
