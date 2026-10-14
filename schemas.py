@@ -68,6 +68,7 @@ class EncounterState(BaseModel):
     active_turn_index: int = 0
     combatants: List[Combatant] = Field(default_factory=list)
     gm_notes: str = ""
+    combat_started: bool = False
 
 
 # LangGraph State Schema

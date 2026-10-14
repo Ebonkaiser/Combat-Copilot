@@ -35,6 +35,7 @@ export interface EncounterState {
   active_turn_index: number;
   combatants: Combatant[];
   gm_notes?: string;
+  combat_started?: boolean;
 }
 
 export type ConditionAction = 'add' | 'remove';

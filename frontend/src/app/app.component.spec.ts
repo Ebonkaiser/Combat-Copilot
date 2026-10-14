@@ -456,11 +456,23 @@ describe('AppComponent', () => {
       expect(combat.encounter()?.combatants.length).toBe(0);
     });
 
+    it('does nothing when combat has not started', () => {
+      const fixture = createReadyFixture();
+      httpMock
+        .expectOne((r) => r.url.endsWith('/encounters'))
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], combat_started: false }));
+
+      fixture.componentInstance.nextTurn();
+
+      httpMock.expectNone((r) => r.method === 'PUT');
+      expect(combat.encounter()?.active_turn_index).toBe(0);
+    });
+
     it('advances the active_turn_index within the same round', () => {
       const fixture = createReadyFixture();
       httpMock
         .expectOne((r) => r.url.endsWith('/encounters'))
-        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0 }));
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0, combat_started: true }));
 
       fixture.componentInstance.nextTurn();
 
@@ -477,7 +489,7 @@ describe('AppComponent', () => {
       const fixture = createReadyFixture();
       httpMock
         .expectOne((r) => r.url.endsWith('/encounters'))
-        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' })], active_turn_index: 0, round: 1 }));
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' })], active_turn_index: 0, round: 1, combat_started: true }));
 
       fixture.componentInstance.nextTurn();
 
@@ -511,11 +523,25 @@ describe('AppComponent', () => {
       expect(combat.encounter()?.combatants.length).toBe(0);
     });
 
+    it('is disabled while combat has not started', () => {
+      const fixture = createReadyFixture();
+      httpMock
+        .expectOne((r) => r.url.endsWith('/encounters'))
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 1, combat_started: false }));
+
+      const comp = fixture.componentInstance;
+      expect(comp.canGoToPreviousTurn()).toBeFalse();
+
+      comp.previousTurn();
+
+      httpMock.expectNone((r) => r.method === 'PUT');
+    });
+
     it('is disabled at the very start of the encounter (round 1, first combatant)', () => {
       const fixture = createReadyFixture();
       httpMock
         .expectOne((r) => r.url.endsWith('/encounters'))
-        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0, round: 1 }));
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0, round: 1, combat_started: true }));
 
       const comp = fixture.componentInstance;
       expect(comp.canGoToPreviousTurn()).toBeFalse();
@@ -529,7 +555,7 @@ describe('AppComponent', () => {
       const fixture = createReadyFixture();
       httpMock
         .expectOne((r) => r.url.endsWith('/encounters'))
-        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 1, round: 1 }));
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 1, round: 1, combat_started: true }));
 
       const comp = fixture.componentInstance;
       expect(comp.canGoToPreviousTurn()).toBeTrue();
@@ -548,7 +574,7 @@ describe('AppComponent', () => {
       const fixture = createReadyFixture();
       httpMock
         .expectOne((r) => r.url.endsWith('/encounters'))
-        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0, round: 2 }));
+        .flush(makeEncounter({ combatants: [makeCombatant({ id: 'c1' }), makeCombatant({ id: 'c2' })], active_turn_index: 0, round: 2, combat_started: true }));
 
       fixture.componentInstance.previousTurn();
 
@@ -720,6 +746,7 @@ describe('AppComponent', () => {
         makeEncounter({
           combatants: [makeCombatant({ id: 'slow', name: 'Slow Guy', initiative: 5 })],
           active_turn_index: 0, // Slow Guy is currently acting
+          combat_started: true,
         })
       );
 
@@ -750,6 +777,7 @@ describe('AppComponent', () => {
             makeCombatant({ id: 'b', name: 'Bob', initiative: 5 }),
           ],
           active_turn_index: 1, // Bob is currently acting
+          combat_started: true,
         })
       );
 
@@ -779,6 +807,7 @@ describe('AppComponent', () => {
             makeCombatant({ id: 'b', name: 'Bob', initiative: 5 }),
           ],
           active_turn_index: 0, // Alice is currently acting
+          combat_started: true,
         })
       );
 
@@ -820,6 +849,119 @@ describe('AppComponent', () => {
       const body = req.request.body as EncounterState;
       expect(body.active_turn_index).toBe(0);
       req.flush(body);
+    });
+
+    describe('before combat has started (setup phase)', () => {
+      it('always fully resorts by initiative, regardless of add order', () => {
+        const fixture = createReadyFixture();
+        httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+          makeEncounter({
+            // Enemy (lowest initiative) was added first and sits at index 0.
+            combatants: [makeCombatant({ id: 'enemy', name: 'Goblin', type: 'enemy', initiative: 3 })],
+            active_turn_index: 0,
+            combat_started: false,
+          })
+        );
+
+        const comp = fixture.componentInstance;
+        // Player has higher initiative despite being added second.
+        comp.newCombatant = { name: 'Hero', type: 'player', armor_class: 15, max_hp: 30, initiative: 18 };
+        comp.addAmount = 1;
+
+        comp.addCombatant();
+
+        const req = httpMock.expectOne((r) => r.method === 'PUT');
+        const body = req.request.body as EncounterState;
+        // The higher-initiative Hero must lead, even though the
+        // lower-initiative Goblin was added first -- setup has no "active
+        // player" to protect, so nothing pins add order over initiative.
+        expect(body.combatants.map((c) => c.name)).toEqual(['Hero', 'Goblin']);
+        expect(body.active_turn_index).toBe(0);
+        req.flush(body);
+      });
+
+      it('re-sorts the whole list on every add during setup', () => {
+        const fixture = createReadyFixture();
+        httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+          makeEncounter({
+            combatants: [
+              makeCombatant({ id: 'lead', name: 'Lead', initiative: 15 }),
+              makeCombatant({ id: 'low', name: 'Low Roller', initiative: 1 }),
+            ],
+            active_turn_index: 0,
+            combat_started: false,
+          })
+        );
+
+        const comp = fixture.componentInstance;
+        comp.newCombatant = { name: 'Middling', type: 'enemy', armor_class: 12, max_hp: 10, initiative: 7 };
+        comp.addAmount = 1;
+
+        comp.addCombatant();
+
+        const req = httpMock.expectOne((r) => r.method === 'PUT');
+        const body = req.request.body as EncounterState;
+        expect(body.combatants.map((c) => c.name)).toEqual(['Lead', 'Middling', 'Low Roller']);
+        req.flush(body);
+      });
+    });
+  });
+
+  describe('canStartCombat / startCombat', () => {
+    it('is disabled with no encounter or no combatants, or once combat has already started', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(makeEncounter({ combatants: [] }));
+
+      const comp = fixture.componentInstance;
+      expect(comp.canStartCombat()).toBeFalse();
+
+      combat.encounter.set(null);
+      expect(comp.canStartCombat()).toBeFalse();
+
+      combat.encounter.set(makeEncounter({ combatants: [makeCombatant()], combat_started: true }));
+      expect(comp.canStartCombat()).toBeFalse();
+
+      combat.encounter.set(makeEncounter({ combatants: [makeCombatant()], combat_started: false }));
+      expect(comp.canStartCombat()).toBeTrue();
+    });
+
+    it('sorts combatants by initiative, resets to round 1 / turn 0, and marks combat started', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({
+          combatants: [
+            makeCombatant({ id: 'a', name: 'Alice', initiative: 5 }),
+            makeCombatant({ id: 'b', name: 'Bob', initiative: 20 }),
+          ],
+          round: 1,
+          active_turn_index: 0,
+          combat_started: false,
+        })
+      );
+
+      fixture.componentInstance.startCombat();
+
+      const req = httpMock.expectOne((r) => r.method === 'PUT');
+      const body = req.request.body as EncounterState;
+      expect(body.combatants.map((c) => c.name)).toEqual(['Bob', 'Alice']);
+      expect(body.active_turn_index).toBe(0);
+      expect(body.round).toBe(1);
+      expect(body.combat_started).toBeTrue();
+
+      req.flush(body);
+      expect(combat.encounter()?.combat_started).toBeTrue();
+    });
+
+    it('does nothing when combat has already started', () => {
+      const fixture = createReadyFixture();
+      httpMock.expectOne((r) => r.url.endsWith('/encounters')).flush(
+        makeEncounter({ combatants: [makeCombatant()], combat_started: true })
+      );
+
+      fixture.componentInstance.startCombat();
+
+      httpMock.expectNone((r) => r.method === 'PUT');
+      expect(combat.encounter()?.combat_started).toBeTrue();
     });
   });
 

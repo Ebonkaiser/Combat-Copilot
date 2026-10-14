@@ -29,8 +29,11 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
           <h3>Initiative & Health Tracker</h3>
           <div>
             <button (click)="openAddModal()" [disabled]="!combat.encounter()" data-testid="add-combatant-btn" style="padding: 6px; margin-right: 8px; background: #10b981; color: white; border: none; cursor: pointer;">Add Combatant</button>
-            <button (click)="previousTurn()" [disabled]="!canGoToPreviousTurn()" title="Go back to the previous combatant's turn" data-testid="previous-turn-btn" style="padding: 6px; margin-right: 8px; background: #6b7280; color: white; border: none; cursor: pointer;">Previous Turn</button>
-            <button (click)="nextTurn()" style="padding: 6px; margin-right: 8px; background: #f59e0b; color: white; border: none; cursor: pointer;">Next Turn</button>
+            <ng-container *ngIf="combat.encounter() as enc">
+              <button *ngIf="!enc.combat_started" (click)="startCombat()" [disabled]="!canStartCombat()" title="Locks in initiative order and starts tracking rounds/turns." data-testid="start-combat-btn" style="padding: 6px; margin-right: 8px; background: #16a34a; color: white; border: none; cursor: pointer;">Start Combat</button>
+              <button *ngIf="enc.combat_started" (click)="previousTurn()" [disabled]="!canGoToPreviousTurn()" title="Go back to the previous combatant's turn" data-testid="previous-turn-btn" style="padding: 6px; margin-right: 8px; background: #6b7280; color: white; border: none; cursor: pointer;">Previous Turn</button>
+              <button *ngIf="enc.combat_started" (click)="nextTurn()" data-testid="next-turn-btn" style="padding: 6px; margin-right: 8px; background: #f59e0b; color: white; border: none; cursor: pointer;">Next Turn</button>
+            </ng-container>
             <button (click)="newEncounter()" style="padding: 6px; background: #dc2626; color: white; border: none; cursor: pointer;">New Encounter</button>
           </div>
         </div>
@@ -41,20 +44,21 @@ import { Combatant, ConditionAction, DamageEntry, DamageEvent, DamageType, Encou
         </div>
 
         <div *ngIf="combat.encounter() as enc">
-          <p><strong>Round:</strong> {{ enc.round }} | <strong>Turn:</strong> {{ enc.active_turn_index + 1 }}</p>
+          <p *ngIf="enc.combat_started"><strong>Round:</strong> {{ enc.round }} | <strong>Turn:</strong> {{ enc.active_turn_index + 1 }}</p>
+          <p *ngIf="!enc.combat_started" style="color: #888;">Combat not started -- add combatants, then click <strong>Start Combat</strong> to begin tracking rounds and turns.</p>
 
           <div *ngIf="enc.combatants.length === 0" style="padding: 20px; text-align: center; color: #888;">
             No combatants in this encounter yet. Click <strong>Add Combatant</strong> above to get started.
           </div>
 
           <div *ngFor="let c of enc.combatants; let i = index"
-               [style.border]="c.id === selectedTargetId ? '2px solid gold' : (i === enc.active_turn_index ? '2px solid #3b82f6' : (c.id === hoveredId ? '1px solid #888' : '1px solid #ccc'))"
+               [style.border]="c.id === selectedTargetId ? '2px solid gold' : (enc.combat_started && i === enc.active_turn_index ? '2px solid #3b82f6' : (c.id === hoveredId ? '1px solid #888' : '1px solid #ccc'))"
                (click)="selectedTargetId = c.id"
                (mouseenter)="hoveredId = c.id"
                (mouseleave)="hoveredId = null"
                style="padding: 10px; margin-bottom: 10px; cursor: pointer; border-radius: 4px; position: relative;">
 
-            <div *ngIf="i === enc.active_turn_index" style="position: absolute; top: 10px; right: 10px; font-size: 10px; background: #3b82f6; color: white; padding: 2px 4px; border-radius: 4px;">ACTIVE</div>
+            <div *ngIf="enc.combat_started && i === enc.active_turn_index" style="position: absolute; top: 10px; right: 10px; font-size: 10px; background: #3b82f6; color: white; padding: 2px 4px; border-radius: 4px;">ACTIVE</div>
 
             <div style="display: flex; justify-content: space-between;">
               <strong>{{ c.name }} ({{ c.type }})</strong>
@@ -319,6 +323,7 @@ export class AppComponent implements OnInit {
       active_turn_index: 0,
       combatants: [],
       gm_notes: '',
+      combat_started: false,
     };
 
     // By the time this runs, pollHealth() has already confirmed the
@@ -470,9 +475,31 @@ export class AppComponent implements OnInit {
     this.showDamageModal = false;
   }
 
+  canStartCombat(): boolean {
+    const enc = this.combat.encounter();
+    return !!enc && !enc.combat_started && enc.combatants.length > 0;
+  }
+
+  startCombat(): void {
+    const enc = this.combat.encounter();
+    if (!this.canStartCombat() || !enc) return;
+
+    // Locks in initiative order for the fight: highest initiative first,
+    // round/turn tracking begins from the top.
+    enc.combatants = [...enc.combatants].sort((a, b) => b.initiative - a.initiative);
+    enc.active_turn_index = 0;
+    enc.round = 1;
+    enc.combat_started = true;
+
+    this.combat.updateEncounter(enc.encounter_id, enc).subscribe({
+      next: (updatedEnc) => this.combat.encounter.set(updatedEnc),
+      error: (err) => console.error('Failed to start combat:', err)
+    });
+  }
+
   canGoToPreviousTurn(): boolean {
     const enc = this.combat.encounter();
-    if (!enc || enc.combatants.length === 0) return false;
+    if (!enc || !enc.combat_started || enc.combatants.length === 0) return false;
     return !(enc.round === 1 && enc.active_turn_index === 0);
   }
 
@@ -494,7 +521,7 @@ export class AppComponent implements OnInit {
 
   nextTurn(): void {
     const enc = this.combat.encounter();
-    if (!enc || enc.combatants.length === 0) return;
+    if (!enc || !enc.combat_started || enc.combatants.length === 0) return;
 
     enc.active_turn_index++;
     if (enc.active_turn_index >= enc.combatants.length) {
@@ -562,21 +589,31 @@ export class AppComponent implements OnInit {
       newIds.push(id);
     }
 
-    // Combatants up through the currently active one have already had (or
-    // are having) their turn this round -- splicing new arrivals in there
-    // via a full re-sort would retroactively rewrite a round already in
-    // progress, and if a high-initiative newcomer landed at an index at or
-    // before the active pointer, forward-only turn advancement would skip
-    // them entirely until the *next* round. Instead, only insert new
-    // arrivals into the not-yet-acted remainder of this round, sorted by
-    // initiative within just that remainder, so a high-roller who joins
-    // mid-round still gets a turn this round instead of being skipped.
-    const alreadyActedOrActive = enc.combatants.slice(0, enc.active_turn_index + 1);
-    const notYetActed = enc.combatants.slice(enc.active_turn_index + 1);
-    notYetActed.push(...newCombatants);
-    notYetActed.sort((a, b) => b.initiative - a.initiative);
+    if (!enc.combat_started) {
+      // Setup phase -- no round/turn is in progress yet, so there's no
+      // "already acted" segment to protect and no real active combatant
+      // to preserve either. Always fully resort by initiative; whoever
+      // naturally has the highest initiative lands first.
+      enc.combatants = enc.combatants.concat(newCombatants).sort((a, b) => b.initiative - a.initiative);
+      enc.active_turn_index = 0;
+    } else {
+      // Combat in progress -- combatants up through the currently active
+      // one have already had (or are having) their turn this round.
+      // Splicing new arrivals in there via a full re-sort would
+      // retroactively rewrite a round already in progress, and if a
+      // high-initiative newcomer landed at an index at or before the
+      // active pointer, forward-only turn advancement would skip them
+      // entirely until the *next* round. Instead, only insert new arrivals
+      // into the not-yet-acted remainder of this round, sorted by
+      // initiative within just that remainder, so a high-roller who joins
+      // mid-round still gets a turn this round instead of being skipped.
+      const alreadyActedOrActive = enc.combatants.slice(0, enc.active_turn_index + 1);
+      const notYetActed = enc.combatants.slice(enc.active_turn_index + 1);
+      notYetActed.push(...newCombatants);
+      notYetActed.sort((a, b) => b.initiative - a.initiative);
 
-    enc.combatants = alreadyActedOrActive.concat(notYetActed);
+      enc.combatants = alreadyActedOrActive.concat(notYetActed);
+    }
 
     this.combat.updateEncounter(enc.encounter_id, enc).subscribe({
       next: (updatedEnc) => {

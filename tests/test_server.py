@@ -122,6 +122,23 @@ def test_gm_notes_defaults_to_empty_string(monkeypatch):
         assert resp.json()["gm_notes"] == ""
 
 
+def test_combat_started_defaults_false_and_round_trips(monkeypatch):
+    monkeypatch.setattr(server, "_load_knowledge_and_engine", _fake_load_success)
+    with TestClient(server.app) as client:
+        resp = client.post("/encounters", json={
+            "encounter_id": "enc_1", "round": 1, "active_turn_index": 0, "combatants": [],
+        })
+        assert resp.json()["combat_started"] is False
+
+        update = client.put("/encounters/enc_1", json={
+            **resp.json(), "combat_started": True,
+        })
+        assert update.json()["combat_started"] is True
+
+        followup = client.get("/encounters/enc_1")
+        assert followup.json()["combat_started"] is True
+
+
 def test_damage_stream_returns_503_before_ready(monkeypatch):
     monkeypatch.setattr(server, "_load_knowledge_and_engine", _hang_then_succeed)
     with TestClient(server.app) as client:
