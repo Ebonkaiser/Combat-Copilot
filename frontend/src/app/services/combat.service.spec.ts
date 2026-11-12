@@ -6,7 +6,8 @@ import { Combatant, DamageEvent, EncounterState } from '../models/combat.model';
 describe('CombatService', () => {
   let service: CombatService;
   let httpMock: HttpTestingController;
-  const baseUrl = 'http://localhost:8000';
+  // Relative, like production: the dev server proxies /api to the backend.
+  const baseUrl = '/api';
 
   const makeEncounter = (overrides: Partial<EncounterState> = {}): EncounterState => ({
     encounter_id: 'enc_1',
@@ -116,6 +117,8 @@ describe('CombatService', () => {
 
       spyOn(window, 'fetch').and.returnValue(
         Promise.resolve({
+          ok: true,
+          status: 200,
           body: { getReader: () => reader },
         } as unknown as Response)
       );
@@ -138,6 +141,7 @@ describe('CombatService', () => {
         jasmine.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
           body: JSON.stringify(event),
         })
       );
@@ -217,7 +221,7 @@ describe('CombatService', () => {
     });
 
     it('sets isStreaming to false when the response has no body', async () => {
-      spyOn(window, 'fetch').and.returnValue(Promise.resolve({ body: null } as unknown as Response));
+      spyOn(window, 'fetch').and.returnValue(Promise.resolve({ ok: true, status: 200, body: null } as unknown as Response));
       spyOn(console, 'error');
 
       service.applyDamageStream('enc_1', event);
@@ -225,6 +229,55 @@ describe('CombatService', () => {
 
       expect(service.isStreaming()).toBeFalse();
       expect(console.error).toHaveBeenCalled();
+    });
+
+    [401, 404, 500].forEach((status) => {
+      it(`reports an HTTP ${status} response through onFailure instead of failing silently`, async () => {
+        spyOn(window, 'fetch').and.returnValue(
+          Promise.resolve({ ok: false, status, body: null } as unknown as Response)
+        );
+        spyOn(console, 'error');
+        const onFailure = jasmine.createSpy('onFailure');
+
+        service.applyDamageStream('enc_1', event, onFailure);
+        await flushMicrotasks();
+
+        expect(onFailure).toHaveBeenCalledOnceWith(status);
+        expect(service.isStreaming()).toBeFalse();
+        expect(service.narrative()).toBe('');
+      });
+    });
+
+    it('reports a network failure through onFailure with a null status', async () => {
+      spyOn(window, 'fetch').and.returnValue(Promise.reject(new Error('network down')));
+      spyOn(console, 'error');
+      const onFailure = jasmine.createSpy('onFailure');
+
+      service.applyDamageStream('enc_1', event, onFailure);
+      await flushMicrotasks();
+
+      expect(onFailure).toHaveBeenCalledOnceWith(null);
+    });
+
+    it('does not call onFailure when the stream completes normally', async () => {
+      mockFetchStream(sseBody(['event: narrative_chunk\ndata: {"token":"Hit."}', 'event: end\ndata: {}']));
+      const onFailure = jasmine.createSpy('onFailure');
+
+      service.applyDamageStream('enc_1', event, onFailure);
+      await flushMicrotasks();
+
+      expect(onFailure).not.toHaveBeenCalled();
+      expect(service.narrative()).toBe('Hit.');
+    });
+
+    it('stops showing "streaming" when the connection closes without an end event', async () => {
+      mockFetchStream(sseBody(['event: narrative_chunk\ndata: {"token":"Cut off"}']));
+
+      service.applyDamageStream('enc_1', event);
+      await flushMicrotasks();
+
+      expect(service.narrative()).toBe('Cut off');
+      expect(service.isStreaming()).toBeFalse();
     });
 
     async function flushMicrotasks(): Promise<void> {

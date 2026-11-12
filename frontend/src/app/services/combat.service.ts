@@ -1,7 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Combatant, DamageEvent, EncounterState } from '../models/combat.model';
+import { DamageEvent, EncounterCreate, EncounterState } from '../models/combat.model';
 import { environment } from '../../environments/environment';
 
 @Injectable({
@@ -21,7 +21,8 @@ export class CombatService {
     return this.http.get<{ status: string; detail?: string }>(`${this.baseUrl}/health`);
   }
 
-  public createEncounter(payload: EncounterState): Observable<EncounterState> {
+  /** The server assigns the encounter id: use the one in the response, not one of your own. */
+  public createEncounter(payload: EncounterCreate): Observable<EncounterState> {
     return this.http.post<EncounterState>(`${this.baseUrl}/encounters`, payload);
   }
 
@@ -36,7 +37,19 @@ export class CombatService {
     );
   }
 
-  public applyDamageStream(encounterId: string, event: DamageEvent): void {
+  /**
+   * Streams the narrated result of a damage/heal/condition event.
+   *
+   * `onFailure` is told when the server refused or the connection failed -- with the HTTP
+   * status (401: owner session gone, 404: the encounter no longer exists for this caller)
+   * or null for a network error -- so the caller can recover instead of the narration
+   * silently never appearing.
+   */
+  public applyDamageStream(
+    encounterId: string,
+    event: DamageEvent,
+    onFailure?: (status: number | null) => void,
+  ): void {
     this.isStreaming.set(true);
     this.narrative.set('');
 
@@ -44,11 +57,18 @@ export class CombatService {
     fetch(`${this.baseUrl}/encounters/${encounterId}/damage/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify(event),
     })
       .then(async (response) => {
+        if (!response.ok) {
+          console.error('SSE Stream refused:', response.status);
+          this.isStreaming.set(false);
+          onFailure?.(response.status);
+          return;
+        }
         if (!response.body) throw new Error('ReadableStream unavailable');
-        
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -82,10 +102,13 @@ export class CombatService {
             }
           }
         }
+        // The connection closed: never leave the UI waiting on a stream that is gone.
+        this.isStreaming.set(false);
       })
       .catch((err) => {
         console.error('SSE Stream Failure:', err);
         this.isStreaming.set(false);
+        onFailure?.(null);
       });
   }
 }
