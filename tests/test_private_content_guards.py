@@ -132,3 +132,34 @@ def test_no_private_campaign_file_is_tracked_by_git():
     tracked = git("ls-files", "--", "data/campaigns", "campaigns").stdout.split()
 
     assert tracked == []
+
+
+# ------------------------------------------------------- nginx <-> backend coupling
+
+def nginx_api_location() -> str:
+    """The body of the `location /api/ { ... }` block."""
+    text = (ROOT / "nginx.conf").read_text(encoding="utf-8")
+    start = text.index("location /api/")
+    return text[text.index("{", start) + 1 : text.index("}", start)]
+
+
+def test_nginx_forwards_the_original_host_so_the_origin_check_can_pass():
+    # The backend refuses a browser POST whose Origin host is not the host the request was addressed
+    # to. Behind nginx that only works if nginx passes the client's Host (with its port) upstream:
+    # by default it sends 127.0.0.1:8000 and EVERY browser POST would be answered 403.
+    block = nginx_api_location()
+
+    assert "proxy_set_header Host $http_host;" in block
+
+
+def test_nginx_sets_rather_than_appends_the_client_address():
+    # The sign-in rate limits are per client address. $proxy_add_x_forwarded_for would keep whatever
+    # a client put in the header, letting it pick its own address.
+    block = nginx_api_location()
+
+    assert "proxy_set_header X-Forwarded-For $remote_addr;" in block
+    assert "$proxy_add_x_forwarded_for" not in block
+
+
+def test_nginx_keeps_buffering_off_for_the_damage_stream():
+    assert "proxy_buffering off;" in nginx_api_location()

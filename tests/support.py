@@ -1,7 +1,9 @@
 """Shared helpers for the offline (no API key, no network) tests."""
 import gc
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from chromadb.api.shared_system_client import SharedSystemClient
 
@@ -52,3 +54,69 @@ SERVER_ENV_VARS = (
     "ENV", "OWNER_EMAILS", "SESSION_SECRET", "ALLOWED_ORIGINS",
     "EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM", "CAMPAIGNS_DIR", "FAKE_AI",
 )
+
+OWNER_EMAIL = "owner@example.test"
+SESSION_SECRET = "test-session-secret-0123456789-abcdefghij"  # >= 32 characters
+START_TIME = 1_800_000_000.0
+
+
+class FakeClock:
+    """Movable time for the auth service (code/session expiry, rate-limit windows)."""
+
+    def __init__(self, start: float = START_TIME):
+        self.now = start
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+class RecordingSender:
+    """Stands in for the email provider: remembers what would have been sent."""
+
+    def __init__(self, fail: bool = False):
+        self.sent = []  # (to, code, expires_minutes)
+        self.fail = fail
+
+    def send_code(self, to: str, code: str, expires_minutes: int) -> None:
+        if self.fail:
+            raise RuntimeError("provider exploded")
+        self.sent.append((to, code, expires_minutes))
+
+    @property
+    def last_code(self) -> str:
+        return self.sent[-1][1]
+
+
+@dataclass
+class Api:
+    client: Any  # fastapi.testclient.TestClient
+    auth: Any  # auth.AuthService
+    sender: Any
+    clock: FakeClock
+
+
+def owner_env(**overrides) -> dict:
+    """A working owner-login configuration for ENV=development (console email provider).
+    Pass a key as None to leave it unset."""
+    env = {"ENV": "development", "OWNER_EMAILS": OWNER_EMAIL, "SESSION_SECRET": SESSION_SECRET}
+    env.update(overrides)
+    return {key: value for key, value in env.items() if value is not None}
+
+
+def request_code(api, email=OWNER_EMAIL, **kwargs):
+    return api.client.post("/auth/request-code", json={"email": email}, **kwargs)
+
+
+def verify(api, code, email=OWNER_EMAIL, **kwargs):
+    return api.client.post("/auth/verify", json={"email": email, "code": code}, **kwargs)
+
+
+def sign_in(api, email=OWNER_EMAIL):
+    """Runs the real request-code -> verify flow; the client's cookie jar then holds the session."""
+    assert request_code(api, email).status_code == 202
+    response = verify(api, api.sender.last_code, email)
+    assert response.status_code == 200, response.text
+    return response

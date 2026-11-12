@@ -13,6 +13,12 @@ from sse_starlette.sse import EventSourceResponse
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from schemas import EncounterState, DamageEvent, Combatant, EquipWeaponRequest
+from auth import (
+    OriginCheckMiddleware,
+    cors_origins_from_env,
+    create_auth_service,
+    router as auth_router,
+)
 from campaigns import Campaign, load_campaigns
 from knowledge_engine import CombatKnowledgeBase
 from combat_graph import create_combat_engine
@@ -128,6 +134,8 @@ async def lifespan(app: FastAPI):
     # Cheap, synchronous, no network -- CRUD routes work immediately
     # regardless of knowledge-base readiness.
     app.state.store = StateStore()
+    # Config + in-memory sign-in state only: cheap, no network.
+    app.state.auth = create_auth_service()
     app.state.kb = None
     app.state.llm = None
     app.state.combat_engine = None
@@ -146,17 +154,26 @@ async def lifespan(app: FastAPI):
 
     if not startup_task.done():
         startup_task.cancel()
+    app.state.auth.close()
 
 
 app = FastAPI(title="AI Combat Copilot Engine", lifespan=lifespan)
 
+# Added first => runs inside CORS: a foreign-Origin POST/PUT/DELETE is refused (403).
+app.add_middleware(OriginCheckMiddleware)
+
+# Sessions are cookies, so a wildcard origin would let any website act as the
+# owner. Cross-site access is limited to ALLOWED_ORIGINS; in production that is
+# empty (same-origin only: nginx serves the app and /api from one origin).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins_from_env(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept"],
 )
+
+app.include_router(auth_router)
 
 
 @app.get("/health")

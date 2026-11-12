@@ -12,3 +12,5 @@ chromadb==1.5.9
 python-dotenv==1.2.2
 pydantic==2.12.5
 PyYAML==6.0.3
+itsdangerous==2.2.0
+httpx==0.28.1
