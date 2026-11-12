@@ -1,5 +1,6 @@
-"""FAKE_AI and CHROMA_DIR: dev/test switches that must be inert in production. Offline."""
+"""FAKE_AI, CHROMA_DIR and STATE_DB_PATH: dev/test switches that must be inert in production. Offline."""
 import logging
+import os
 
 import pytest
 
@@ -17,7 +18,7 @@ from support import (
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for name in (*SERVER_ENV_VARS, "CHROMA_DIR"):
+    for name in (*SERVER_ENV_VARS, "CHROMA_DIR", "STATE_DB_PATH"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -71,6 +72,31 @@ def test_the_fake_startup_builds_an_offline_engine_over_its_own_collection(monke
         assert "Incapacitated" in kb.retrieve_rules("incapacitated condition")
     finally:
         release_kb(kb)
+
+
+def test_state_db_path_comes_from_the_environment(monkeypatch, tmp_path):
+    target = tmp_path / "nested" / "dir" / "e2e.db"
+    monkeypatch.setenv("STATE_DB_PATH", str(target))
+
+    StateStore()
+
+    assert target.exists()
+
+
+def test_an_explicit_db_path_wins_over_the_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("STATE_DB_PATH", str(tmp_path / "from_env.db"))
+
+    StateStore(str(tmp_path / "explicit.db"))
+
+    assert (tmp_path / "explicit.db").exists()
+    assert not (tmp_path / "from_env.db").exists()
+
+
+def test_without_the_variable_the_default_path_is_the_documented_one():
+    from persistence import DEFAULT_DB_PATH
+
+    assert DEFAULT_DB_PATH == "./state_db/combat_state.db"
+    assert "STATE_DB_PATH" not in os.environ
 
 
 def test_the_apps_info_logs_reach_the_container_logs():

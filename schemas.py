@@ -69,6 +69,38 @@ class EncounterState(BaseModel):
     combatants: List[Combatant] = Field(default_factory=list)
     gm_notes: str = ""
     combat_started: bool = False
+    # The campaign whose private lore narration may draw on, and whether the
+    # encounter is reserved for the signed-in owner. Both are decided by the
+    # server when the encounter is created and can never be changed by a
+    # client afterwards (PUT pins them to the stored values).
+    campaign_id: Optional[str] = None
+    owner_scoped: bool = False
+
+
+class EncounterCreate(BaseModel):
+    """Body of POST /encounters. The server assigns the id (a client-supplied
+    encounter_id is accepted for compatibility and ignored) and decides
+    owner_scoped; campaign_id is honoured only for a signed-in owner."""
+
+    encounter_id: Optional[str] = None
+    round: int = 1
+    active_turn_index: int = 0
+    combatants: List[Combatant] = Field(default_factory=list)
+    gm_notes: str = ""
+    combat_started: bool = False
+    campaign_id: Optional[str] = None
+
+
+class CampaignSummary(BaseModel):
+    """What the campaign switcher may see: no roster, no paths, no lore."""
+
+    id: str
+    name: str
+    description: str = ""
+
+
+class RosterResponse(BaseModel):
+    combatants: List[Combatant]
 
 
 # LangGraph State Schema

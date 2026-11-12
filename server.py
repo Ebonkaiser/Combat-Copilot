@@ -2,8 +2,9 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Dict
+from typing import AsyncGenerator, Dict, List
 from dotenv import load_dotenv
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -12,11 +13,21 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from schemas import EncounterState, DamageEvent, Combatant, EquipWeaponRequest
+from schemas import (
+    CampaignSummary,
+    Combatant,
+    DamageEvent,
+    EncounterCreate,
+    EncounterState,
+    EquipWeaponRequest,
+    RosterResponse,
+)
 from auth import (
     OriginCheckMiddleware,
     cors_origins_from_env,
     create_auth_service,
+    current_owner,
+    require_owner,
     router as auth_router,
 )
 from campaigns import Campaign, load_campaigns
@@ -197,64 +208,128 @@ def _require_ready(request: Request):
     return state
 
 
+def _accessible_encounter(encounter_id: str, request: Request) -> EncounterState:
+    """Dependency for every route that touches one encounter: the stored encounter, or 404.
+
+    An owner-scoped encounter answers 404 -- not 403 -- to anyone who is not the signed-in owner,
+    so its existence cannot be probed by guessing ids."""
+    encounter = request.app.state.store.get_encounter(encounter_id)
+    if encounter is None or (encounter.owner_scoped and current_owner(request) is None):
+        raise HTTPException(status_code=404, detail="Encounter not found")
+    return encounter
+
+
+@app.get("/campaigns", response_model=List[CampaignSummary])
+async def list_campaigns(_owner: str = Depends(require_owner), state=Depends(_require_ready)):
+    """Owner only: the campaigns on this server -- names and descriptions, never rosters, paths or lore."""
+    campaigns = sorted(state.campaigns.values(), key=lambda campaign: campaign.name.lower())
+    return [CampaignSummary(id=c.id, name=c.name, description=c.description) for c in campaigns]
+
+
+@app.get("/campaigns/{campaign_id}/roster", response_model=RosterResponse)
+async def get_campaign_roster(campaign_id: str, _owner: str = Depends(require_owner), state=Depends(_require_ready)):
+    """Owner only: a campaign's characters -- the pick-list offered when building an encounter."""
+    campaign = state.campaigns.get(campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return RosterResponse(combatants=[combatant.model_copy(deep=True) for combatant in campaign.roster])
+
+
 @app.post("/encounters", response_model=EncounterState)
-async def create_encounter(encounter: EncounterState, request: Request):
-    """Registers a new encounter."""
-    request.app.state.store.save_encounter(encounter)
+async def create_encounter(body: EncounterCreate, request: Request):
+    """Registers a new encounter under a server-assigned id (any client-supplied id is ignored).
+
+    Anonymous callers get a plain, public encounter with no campaign. A campaign requires the
+    signed-in owner and a campaign that exists; that encounter is then owner-scoped."""
+    app_state = request.app.state
+    campaign_id = body.campaign_id
+    if campaign_id is not None:
+        if current_owner(request) is None:
+            raise HTTPException(status_code=403, detail="Campaigns require owner sign-in")
+        _require_ready(request)  # the campaign registry loads with the rest of startup
+        if campaign_id not in app_state.campaigns:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+    encounter = EncounterState(
+        encounter_id=f"enc_{uuid.uuid4().hex}",
+        round=body.round,
+        active_turn_index=body.active_turn_index,
+        combatants=body.combatants,
+        gm_notes=body.gm_notes,
+        combat_started=body.combat_started,
+        campaign_id=campaign_id,
+        owner_scoped=campaign_id is not None,
+    )
+    app_state.store.save_encounter(encounter)
+    # The public, unauthenticated store stays bounded: idle and surplus anonymous encounters go.
+    app_state.store.evict_anonymous()
     return encounter
 
 
 @app.get("/encounters/{encounter_id}", response_model=EncounterState)
-async def get_encounter(encounter_id: str, request: Request):
+async def get_encounter(encounter: EncounterState = Depends(_accessible_encounter)):
     """Retrieves an active encounter."""
-    encounter = request.app.state.store.get_encounter(encounter_id)
-    if not encounter:
-        raise HTTPException(status_code=404, detail="Encounter not found")
     return encounter
 
 
 @app.put("/encounters/{encounter_id}", response_model=EncounterState)
-async def update_encounter(encounter_id: str, updated_state: EncounterState, request: Request):
-    """Updates an active encounter state."""
-    store = request.app.state.store
-    if store.get_encounter(encounter_id) is None:
-        raise HTTPException(status_code=404, detail="Encounter not found")
-    store.save_encounter(updated_state)
-    return updated_state
+async def update_encounter(
+    updated_state: EncounterState,
+    request: Request,
+    stored: EncounterState = Depends(_accessible_encounter),
+):
+    """Updates an active encounter state.
+
+    The URL decides which encounter is written (an id inside the body is ignored), and campaign_id /
+    owner_scoped always keep their stored values -- otherwise a client could point its own encounter
+    at a private campaign, or write over someone else's."""
+    pinned = updated_state.model_copy(
+        update={
+            "encounter_id": stored.encounter_id,
+            "campaign_id": stored.campaign_id,
+            "owner_scoped": stored.owner_scoped,
+        }
+    )
+    request.app.state.store.save_encounter(pinned)
+    return pinned
 
 
 @app.put("/encounters/{encounter_id}/combatants/{combatant_id}/equipment", response_model=EncounterState)
-async def equip_weapon(encounter_id: str, combatant_id: str, payload: EquipWeaponRequest, request: Request):
+async def equip_weapon(
+    combatant_id: str,
+    payload: EquipWeaponRequest,
+    request: Request,
+    encounter: EncounterState = Depends(_accessible_encounter),
+):
     """Deterministically sets a combatant's equipped weapon (state CRUD, no LLM involved)."""
-    store = request.app.state.store
-    encounter = store.get_encounter(encounter_id)
-    if not encounter:
-        raise HTTPException(status_code=404, detail="Encounter not found")
-
     CombatStateEngine.update_equipment(encounter, combatant_id, payload.weapon_name)
-    store.save_encounter(encounter)
+    request.app.state.store.save_encounter(encounter)
     return encounter
 
 
 @app.post("/encounters/{encounter_id}/damage/stream")
-async def apply_damage_and_stream(encounter_id: str, event: DamageEvent, state=Depends(_require_ready)):
+async def apply_damage_and_stream(
+    event: DamageEvent,
+    state=Depends(_require_ready),
+    encounter: EncounterState = Depends(_accessible_encounter),
+):
     """
     Executes LangGraph mutation and streams token events via SSE.
     """
     store = state.store
     combat_engine = state.combat_engine
 
-    encounter = store.get_encounter(encounter_id)
-    if not encounter:
-        raise HTTPException(status_code=404, detail="Encounter not found")
-
     graph_input = {
-        "encounter_id": encounter_id,
+        "encounter_id": encounter.encounter_id,
         "round": encounter.round,
         "active_turn_index": encounter.active_turn_index,
         "combatants": [c.model_dump() for c in encounter.combatants],
         "last_event": event.model_dump(),
         "gm_notes": encounter.gm_notes,
+        # Private campaign lore reaches narration only for an owner-scoped encounter (the
+        # dependency above already proved the caller is the owner). Everything else -- every
+        # anonymous encounter -- gets the public rules alone.
+        "campaign_id": encounter.campaign_id if encounter.owner_scoped else None,
         "retrieved_lore": "",
         "streamed_narration": ""
     }

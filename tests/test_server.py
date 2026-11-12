@@ -69,23 +69,25 @@ def test_encounters_crud_works_before_kb_is_ready(monkeypatch):
 def test_equip_weapon_updates_encounter(monkeypatch):
     monkeypatch.setattr(server, "_load_knowledge_and_engine", _fake_load_success)
     with TestClient(server.app) as client:
-        client.post("/encounters", json={
-            "encounter_id": "enc_1", "round": 1, "active_turn_index": 0,
+        created = client.post("/encounters", json={
+            "round": 1, "active_turn_index": 0,
             "combatants": [{
                 "id": "c1", "name": "Hero", "type": "player",
                 "armor_class": 15, "max_hp": 20, "current_hp": 20,
             }],
         })
+        # The server assigns the id -- clients use the one it returns.
+        encounter_id = created.json()["encounter_id"]
 
         resp = client.put(
-            "/encounters/enc_1/combatants/c1/equipment",
+            f"/encounters/{encounter_id}/combatants/c1/equipment",
             json={"weapon_name": "Rapier"},
         )
         assert resp.status_code == 200
         combatant = resp.json()["combatants"][0]
         assert combatant["weapon_equipped"] == "Rapier"
 
-        followup = client.get("/encounters/enc_1")
+        followup = client.get(f"/encounters/{encounter_id}")
         assert followup.json()["combatants"][0]["weapon_equipped"] == "Rapier"
 
 
@@ -109,7 +111,7 @@ def test_gm_notes_round_trip_through_persistence(monkeypatch):
         assert resp.status_code == 200
         assert resp.json()["gm_notes"] == "The bridge is collapsing -- combatants near it take extra fall risk."
 
-        followup = client.get("/encounters/enc_1")
+        followup = client.get(f"/encounters/{resp.json()['encounter_id']}")
         assert followup.json()["gm_notes"] == "The bridge is collapsing -- combatants near it take extra fall risk."
 
 
@@ -130,12 +132,13 @@ def test_combat_started_defaults_false_and_round_trips(monkeypatch):
         })
         assert resp.json()["combat_started"] is False
 
-        update = client.put("/encounters/enc_1", json={
+        encounter_id = resp.json()["encounter_id"]
+        update = client.put(f"/encounters/{encounter_id}", json={
             **resp.json(), "combat_started": True,
         })
         assert update.json()["combat_started"] is True
 
-        followup = client.get("/encounters/enc_1")
+        followup = client.get(f"/encounters/{encounter_id}")
         assert followup.json()["combat_started"] is True
 
 
