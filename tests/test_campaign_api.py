@@ -197,6 +197,15 @@ def test_roster_responses_do_not_share_state_with_the_registry(owner_api):
     assert second["combatants"][0]["name"] == "Fixture Hero"
 
 
+def test_the_test_client_really_sends_a_cookie_set_without_a_domain(open_api):
+    # The tests that plant a forged or tampered session cookie rely on this. If a future HTTP library stopped
+    # sending such cookies they would all pass VACUOUSLY (nothing sent, so "anonymous"): this fails loudly instead.
+    api = open_api(**owner_env())
+    api.client.cookies.set("cc_session", "probe")
+
+    assert api.client.build_request("GET", "/auth/me").headers.get("cookie") == "cc_session=probe"
+
+
 @pytest.mark.parametrize("how", ["logged out", "expired", "tampered"])
 def test_campaign_routes_stop_working_when_the_session_does(owner_api, how):
     if how == "logged out":
@@ -204,7 +213,16 @@ def test_campaign_routes_stop_working_when_the_session_does(owner_api, how):
     elif how == "expired":
         owner_api.clock.advance(8 * 24 * 3600)
     else:
-        owner_api.client.cookies.set("cc_session", "tampered")
+        # Break the signature of the REAL token, and REPLACE the cookie. Setting a second cookie with the same
+        # name would send both, and which one a server honours then depends on the HTTP library's header order
+        # (it did: this test failed in CI once a newer Starlette changed that order).
+        token = owner_api.client.cookies.get("cc_session")
+        middle = len(token) // 2
+        altered = token[:middle] + ("A" if token[middle] != "A" else "B") + token[middle + 1 :]
+        owner_api.client.cookies.clear()
+        owner_api.client.cookies.set("cc_session", altered)
+        # ...and prove the altered token is what goes over the wire, alone, so this cannot pass vacuously.
+        assert owner_api.client.build_request("GET", "/campaigns").headers.get("cookie") == f"cc_session={altered}"
 
     assert owner_api.client.get("/campaigns").status_code == 401
     assert owner_api.client.get(f"/campaigns/{FIXTURE_CAMPAIGN_ID}/roster").status_code == 401

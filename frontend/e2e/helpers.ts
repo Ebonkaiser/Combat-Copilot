@@ -65,12 +65,43 @@ export async function openApp(page: Page): Promise<void> {
   await expect(page.getByTestId('add-combatant-btn')).toBeEnabled();
 }
 
+/** The code the development helper holds for `email` right now, or null if it holds none. */
+export async function emailedCode(page: Page, email = OWNER_EMAIL): Promise<string | null> {
+  const response = await page.request.get(`/api/auth/dev/last-code?email=${encodeURIComponent(email)}`);
+  return response.ok() ? ((await response.json()).code as string) : null;
+}
+
+/**
+ * Waits for the code emailed by the request made AFTER `previous` was read.
+ *
+ * The server delivers the code in a background task just AFTER it answers 202, so "the form says a code was
+ * sent" does not yet mean the development helper has it -- and it still holds the PREVIOUS sign-in's code until
+ * then. Reading it straight away gets nothing, or a stale code that was never going to work. (A slow CI
+ * machine makes that window wide enough to fail the suite.)
+ */
+export async function nextEmailedCode(page: Page, previous: string | null, email = OWNER_EMAIL): Promise<string> {
+  let fresh = '';
+  await expect
+    .poll(
+      async () => {
+        const code = await emailedCode(page, email);
+        fresh = code !== null && code !== previous ? code : '';
+        return fresh;
+      },
+      { message: 'the development helper should hold the code that was just emailed', timeout: 10_000 },
+    )
+    .toMatch(/^\d{6}$/);
+  return fresh;
+}
+
 /** The full owner sign-in through the real UI: email, then the code via the development helper. */
 export async function signInAsOwner(page: Page): Promise<void> {
+  const previous = await emailedCode(page);
   await page.getByTestId('sign-in-btn').click();
   await page.getByTestId('login-email').fill(OWNER_EMAIL);
   await page.getByTestId('login-send').click();
   await expect(page.getByTestId('login-neutral')).toBeVisible();
+  await nextEmailedCode(page, previous);
   await page.getByTestId('login-dev-fill').click();
   await expect(page.getByTestId('login-code')).toHaveValue(/^\d{6}$/);
   await page.getByTestId('login-verify').click();

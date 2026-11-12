@@ -1,4 +1,11 @@
 fastapi==0.141.1
+# FastAPI only asks for starlette>=0.46, and httpx2 arrives through other packages (langsmith,
+# huggingface_hub). Starlette's TestClient uses httpx2 when it is installed and an older HTTP client when it is
+# not, and the two order cookies differently. Left to float, CI and the Docker image resolved newer versions than
+# a developer machine had, and a test passed locally but failed in CI. Pinned so CI, the image and a local
+# environment agree. Bump both on purpose, then run `pip install -r requirements-dev.txt` locally.
+starlette==1.10.0
+httpx2==2.16.0
 uvicorn[standard]==0.52.4
 sse-starlette==3.4.8
 langgraph==1.2.11

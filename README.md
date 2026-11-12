@@ -119,6 +119,8 @@ python -m uvicorn server:app --host 127.0.0.1 --port 8000
 
 ## Tests
 
+Set up the test environment with `pip install -r requirements-dev.txt`. It includes the pinned `starlette` and `httpx2` (see the comment in `requirements.txt`), and `tests/test_environment_pins.py` fails, saying so, if your environment drifts from them -- CI and the Docker image use exactly those pins.
+
 ```bash
 python -m pytest tests --ignore=tests/test_combat_graph.py --ignore=tests/test_knowledge_engine.py   # fast, offline, no key
 python -m pytest tests/test_combat_graph.py tests/test_knowledge_engine.py tests/test_evals.py       # live tier: needs GOOGLE_API_KEY

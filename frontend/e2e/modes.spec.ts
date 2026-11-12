@@ -4,7 +4,9 @@ import {
   addCombatant,
   addFromRoster,
   damage,
+  emailedCode,
   expectNoContrastViolations,
+  nextEmailedCode,
   openApp,
   signInAsOwner,
 } from './helpers';
@@ -22,6 +24,20 @@ async function pickCampaign(page: Page): Promise<void> {
   await page.getByTestId('campaign-select').selectOption(CAMPAIGN_ID);
   await expect(page.getByTestId('campaign-select')).toHaveValue(CAMPAIGN_ID);
   await expect(page.getByTestId('empty-state')).toContainText('choose characters from');
+}
+
+// Submits a code the server is going to refuse, and returns only once the UI has PROCESSED the refusal.
+//
+// The signal is the code field being cleared: that happens in the 401 handler, never before it. The message is
+// NOT a safe signal: the previous attempt's identical message is still on screen until Angular re-renders, so
+// waiting for it alone passes on stale text. The test then types the next code while this request is still in
+// flight, the late 401 clears that code, "Sign in" stays disabled, and the next click waits out the whole 90 s
+// test timeout (it did, intermittently, in CI-like runs).
+async function submitRefusedCode(page: Page, code: string): Promise<void> {
+  await page.getByTestId('login-code').fill(code);
+  await page.getByTestId('login-verify').click();
+  await expect(page.getByTestId('login-code')).toHaveValue('');
+  await expect(page.getByTestId('login-message')).toContainText('not valid or has expired');
 }
 
 test.describe('anonymous mode', () => {
@@ -69,12 +85,14 @@ test.describe('owner sign-in', () => {
     await expect(page.getByTestId('login-dialog')).toBeVisible();
     await expectNoContrastViolations(page, '12 login step 1');
 
+    const previous = await emailedCode(page);
     await page.getByTestId('login-email').fill(OWNER_EMAIL);
     await page.getByTestId('login-send').click();
     await expect(page.getByTestId('login-neutral')).toHaveText('If this email is authorized, a code was sent.');
     await expect(page.getByTestId('login-code')).toHaveAttribute('autocomplete', 'one-time-code');
     await expectNoContrastViolations(page, '13 login step 2');
 
+    await nextEmailedCode(page, previous); // the code is delivered just after the 202: wait until the helper has it
     await page.getByTestId('login-dev-fill').click();
     await expect(page.getByTestId('login-code')).toHaveValue(/^\d{6}$/);
     await page.getByTestId('login-verify').click();
@@ -99,24 +117,24 @@ test.describe('owner sign-in', () => {
 
   test('five wrong codes use the attempt up: even the right code is then refused', async ({ page }) => {
     await openApp(page);
+    const previous = await emailedCode(page);
     await page.getByTestId('sign-in-btn').click();
     await page.getByTestId('login-email').fill(OWNER_EMAIL);
     await page.getByTestId('login-send').click();
     await expect(page.getByTestId('login-neutral')).toBeVisible();
-    const issued = (await (await page.request.get(`/api/auth/dev/last-code?email=${OWNER_EMAIL}`)).json()).code as string;
+    // THIS request's code, not whatever an earlier test left behind: otherwise "even the right code is refused" below
+    // would hold for a stale code that was never valid, and the test would prove nothing.
+    const issued = await nextEmailedCode(page, previous);
     const wrong = issued === '111111' ? '222222' : '111111';
 
     for (let attempt = 1; attempt <= 5; attempt++) {
-      await page.getByTestId('login-code').fill(wrong);
-      await page.getByTestId('login-verify').click();
-      await expect(page.getByTestId('login-message')).toContainText('not valid or has expired');
+      await submitRefusedCode(page, wrong);
     }
     await expectNoContrastViolations(page, '14 login error message');
 
-    await page.getByTestId('login-code').fill(issued);
-    await page.getByTestId('login-verify').click();
-
-    await expect(page.getByTestId('login-message')).toContainText('not valid or has expired');
+    // The sixth attempt carries the RIGHT code. It must be refused too, and the test must have SEEN the refusal:
+    // were it accepted, the dialog would close, the field would be gone, and this would fail instead of passing.
+    await submitRefusedCode(page, issued);
     await expect(page.getByTestId('mode-badge')).toHaveText('Anonymous');
   });
 
