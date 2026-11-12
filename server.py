@@ -1,8 +1,9 @@
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict
 from dotenv import load_dotenv
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -12,34 +13,96 @@ from sse_starlette.sse import EventSourceResponse
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from schemas import EncounterState, DamageEvent, Combatant, EquipWeaponRequest
+from campaigns import Campaign, load_campaigns
 from knowledge_engine import CombatKnowledgeBase
 from combat_graph import create_combat_engine
 from persistence import StateStore
 from state_engine import CombatStateEngine
 
 load_dotenv()
+
+
+def _configure_logging() -> None:
+    """uvicorn configures only its own loggers, so without this the app's INFO lines -- which
+    campaigns were synced, whether owner login is on and, if not, why -- never reach the
+    container logs. Only the app's logger is touched: chromadb, httpx and friends stay quiet."""
+    app_logger = logging.getLogger("combat_copilot")
+    if app_logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:     [%(name)s] %(message)s"))
+    app_logger.addHandler(handler)
+    app_logger.setLevel(logging.INFO)
+
+
+_configure_logging()
 logger = logging.getLogger("combat_copilot.server")
+
+# Public SRD rules ship in the image. Campaign lore does NOT: it is private
+# content mounted at CAMPAIGNS_DIR (see campaigns.py).
+RULES_DIR = "./data/rules"
+
+
+def _sync_knowledge(kb: CombatKnowledgeBase, campaigns: Dict[str, Campaign], rules_dir: str = RULES_DIR) -> None:
+    """Brings the vector store in line with the files on disk: the SRD rules,
+    then each loaded campaign's lore. Content that is already stored and
+    unchanged costs no embedding calls; campaigns no longer on disk are purged."""
+    if os.path.isdir(rules_dir):
+        logger.info("SRD rules synced: %s", kb.sync_rules(rules_dir))
+    else:
+        # Loud, but not fatal: the app still works, just without rule text.
+        # (Not purged either -- a missing directory here means a broken image or
+        # working directory, not an intentional removal.)
+        logger.error("Rules directory %s not found; SRD rules may be unavailable.", rules_dir)
+
+    for campaign in campaigns.values():
+        logger.info("Campaign %r lore synced: %s", campaign.id, kb.sync_campaign(str(campaign.lore_dir), campaign.id))
+
+    purged = kb.purge_campaigns_except(campaigns.keys())
+    if purged:
+        logger.info("Purged stored content of campaigns no longer on disk: %s", ", ".join(purged))
+
+
+def _fake_ai_enabled() -> bool:
+    """FAKE_AI=1 swaps Gemini for an offline echo narrator and hashing embeddings, so CI and
+    local end-to-end runs need no API key. Honoured only when ENV is development or test:
+    in production the switch is ignored (and the modules behind it are not even in the image)."""
+    if os.environ.get("FAKE_AI") != "1":
+        return False
+    env = (os.environ.get("ENV") or "production").strip().lower()
+    if env not in ("development", "test"):
+        logger.error("FAKE_AI=1 is ignored: it is only honoured when ENV is development or test.")
+        return False
+    return True
 
 
 def _load_knowledge_and_engine(store: StateStore) -> dict:
-    """Heavy, network-bound init: KB construction, one-time lore/rules
-    ingestion (batched, see knowledge_engine.py), LLM + combat engine.
+    """Heavy, network-bound init: campaign registry, KB construction, content
+    sync (batched, see knowledge_engine.py), LLM + combat engine.
     Run via asyncio.to_thread so it never blocks the event loop -- that's
     what lets /health keep responding while this is in flight."""
-    kb = CombatKnowledgeBase()
-    if not store.is_category_ingested("lore"):
-        kb.ingest_directory("./data/lore", category="lore")
-        store.mark_category_ingested("lore")
-    if not store.is_category_ingested("rules"):
-        kb.ingest_directory("./data/rules", category="rules")
-        store.mark_category_ingested("rules")
+    campaigns = load_campaigns()
+    chroma_dir = os.environ.get("CHROMA_DIR") or "./chroma_db"
 
-    # Temperature raised above the provider default (and explicit, rather than implicit)
-    # for narration variety -- phrasing should never repeat itself, while the strict
-    # no-invented-numbers rule is enforced by instruction + deterministic state, not sampling.
-    llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", streaming=True, temperature=1.0)
+    if _fake_ai_enabled():
+        from fake_ai import EchoChatModel, HashingEmbedding  # dev/test only; not shipped in the image
+
+        logger.warning("FAKE_AI=1: using the offline echo narrator and hashing embeddings.")
+        # Its own collection: hashing vectors must never mix with real Gemini embeddings.
+        kb = CombatKnowledgeBase(
+            persist_dir=chroma_dir, collection_name="ttrpg_knowledge_fake_v2", embed_model=HashingEmbedding()
+        )
+        llm = EchoChatModel()
+    else:
+        kb = CombatKnowledgeBase(persist_dir=chroma_dir)
+        # Temperature raised above the provider default (and explicit, rather than implicit)
+        # for narration variety -- phrasing should never repeat itself, while the strict
+        # no-invented-numbers rule is enforced by instruction + deterministic state, not sampling.
+        llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", streaming=True, temperature=1.0)
+
+    _sync_knowledge(kb, campaigns)
     combat_engine = create_combat_engine(kb=kb, llm=llm)
-    return {"kb": kb, "llm": llm, "combat_engine": combat_engine}
+    return {"kb": kb, "llm": llm, "combat_engine": combat_engine, "campaigns": campaigns}
 
 
 async def _run_startup(app: FastAPI) -> None:
@@ -48,6 +111,7 @@ async def _run_startup(app: FastAPI) -> None:
         app.state.kb = result["kb"]
         app.state.llm = result["llm"]
         app.state.combat_engine = result["combat_engine"]
+        app.state.campaigns = result.get("campaigns", {})
         app.state.ready = True
         logger.info("Backend startup complete: knowledge base and combat engine ready.")
     except Exception:
@@ -67,6 +131,7 @@ async def lifespan(app: FastAPI):
     app.state.kb = None
     app.state.llm = None
     app.state.combat_engine = None
+    app.state.campaigns = {}
     app.state.ready = False
     app.state.startup_error = None
 

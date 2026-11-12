@@ -10,6 +10,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Private campaign content (lore + roster) -- never commit: this repo and the
+# image built from it are public. On the droplet it lives in ~/combat-copilot/campaigns/.
+# (The synthetic test fixture under tests/fixtures/campaigns/ is NOT ignored.)
+data/campaigns/
+/campaigns/
+
 # Generated/runtime data -- belongs in a volume, not the repo
 chroma_db/
 test_chroma_db/

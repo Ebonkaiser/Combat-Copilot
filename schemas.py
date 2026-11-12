@@ -79,5 +79,8 @@ class CombatGraphState(TypedDict):
     combatants: List[Dict[str, Any]]
     last_event: Dict[str, Any]
     gm_notes: str
+    # Set by the server only for an owner working inside a campaign; None means
+    # anonymous use, which must never retrieve campaign lore.
+    campaign_id: Optional[str]
     retrieved_lore: str
     streamed_narration: str

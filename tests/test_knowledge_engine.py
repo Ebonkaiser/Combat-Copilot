@@ -1,42 +1,47 @@
-import gc
+"""Live tier: retrieval quality with REAL embeddings (needs GOOGLE_API_KEY).
+
+The campaign here is the synthetic fixture under tests/fixtures/campaigns/ -- the
+owner's private campaign content is never used by tests. The offline scoping
+guarantees live in test_knowledge_scoping.py; this file re-checks the important
+ones against real embedding vectors.
+"""
 import pytest
+from dotenv import load_dotenv
+
 from knowledge_engine import CombatKnowledgeBase
+from support import (
+    ALL_SENTINELS,
+    FIXTURE_CAMPAIGN_ID,
+    FIXTURE_LORE_DIR,
+    RULES_DIR,
+    release_kb,
+)
+
+load_dotenv()
 
 
 @pytest.fixture(scope="function")
 def temp_kb(tmp_path):
-    # Use isolated unique temporary path managed per test run
-    test_db_dir = str(tmp_path / "chroma_test_db")
+    # Isolated temporary path per test run; real GoogleGenAIEmbedding.
+    kb = CombatKnowledgeBase(persist_dir=str(tmp_path / "chroma_test_db"), collection_name="test_lore")
+    kb.sync_campaign(str(FIXTURE_LORE_DIR), FIXTURE_CAMPAIGN_ID)
+    kb.sync_rules(str(RULES_DIR))
 
-    kb = CombatKnowledgeBase(persist_dir=test_db_dir, collection_name="test_lore")
-    
-    # Ingest test datasets
-    kb.ingest_directory("./data/lore", category="lore")
-    kb.ingest_directory("./data/rules", category="rules")
-    
     yield kb
 
     # Explicitly release SQLite / Chroma handles before teardown on Windows
-    del kb.chroma_client
-    del kb.chroma_collection
-    del kb.vector_store
-    del kb.storage_context
-    del kb.index
-    del kb
-    gc.collect()
+    release_kb(kb)
 
 
 def test_retrieval_with_faction_filter(temp_kb):
-    query = "vulnerabilities and behaviors"
-    # metadata_filters takes a dict (exact match), not a bare faction=
-    # kwarg -- and the value must be the lore corpus's slug convention
-    # (data/lore/factions/*.md), e.g. "iron_silk_bureau", not "Iron Silk".
-    # top_k=3 since multiple documents (the faction bio, plus quests/items
-    # tagged with the same faction) can outrank each other by embedding
-    # similarity -- asserting on one specific chunk's exact wording would
-    # be fragile.
+    # The faction value must be the lore corpus's slug convention (see the
+    # frontmatter of tests/fixtures/campaigns/test-campaign/lore/factions/*.md),
+    # e.g. "iron_silk_bureau", not "Iron Silk": the filter is an exact match.
     result = temp_kb.retrieve_context(
-        query=query, metadata_filters={"faction": "iron_silk_bureau"}, top_k=3
+        query="vulnerabilities and behaviors",
+        campaign_id=FIXTURE_CAMPAIGN_ID,
+        faction="iron_silk_bureau",
+        top_k=3,
     )
 
     assert len(result) > 0
@@ -44,8 +49,21 @@ def test_retrieval_with_faction_filter(temp_kb):
 
 
 def test_retrieval_general_rules(temp_kb):
-    query = "What does the incapacitated condition do?"
-    result = temp_kb.retrieve_context(query=query, top_k=1)
-    
+    result = temp_kb.retrieve_context(query="What does the incapacitated condition do?", campaign_id=None, top_k=1)
+
     assert len(result) > 0
     assert "Incapacitated" in result
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What does the Iron Silk Bureau fear?",
+        "secret police guards and their weaknesses",
+        "harbor smugglers and informants",
+    ],
+)
+def test_anonymous_retrieval_excludes_campaign_lore_with_real_embeddings(temp_kb, query):
+    result = temp_kb.retrieve_context(query=query, campaign_id=None, top_k=5)
+
+    assert not any(sentinel in result for sentinel in ALL_SENTINELS)

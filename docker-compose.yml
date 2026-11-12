@@ -15,6 +15,13 @@ services:
     volumes:
       - chroma_data:/app/chroma_db
       - state_data:/app/state_db
+      # Private campaign content (lore + starter roster per campaign). It is NOT in the
+      # repo or the image: it lives in ./campaigns next to this file on the host and is
+      # mounted read-only. The container's non-root user must be able to read it
+      # (chmod -R a+rX campaigns). Lore is synced at startup, so restart the container
+      # (docker compose restart) after changing it. An empty or missing folder is fine:
+      # the app then runs anonymous-only with the public rules.
+      - ./campaigns:/app/data/campaigns:ro
 
 volumes:
   chroma_data:

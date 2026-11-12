@@ -52,32 +52,37 @@ def mutate_state_node(state: CombatGraphState) -> Dict[str, Any]:
 
 
 def retrieve_lore_node(state: CombatGraphState, kb: CombatKnowledgeBase) -> Dict[str, Any]:
-    """Queries LlamaIndex for lore and rules matching the target and attack type."""
+    """Queries LlamaIndex for lore and rules matching the target and attack type.
+
+    Rules are public and always retrieved. Lore is private to a campaign: it is
+    retrieved only when the state carries a campaign_id (set by the server for
+    an owner working in a campaign), never for anonymous use.
+    """
     event = state["last_event"]
     target = next((c for c in state["combatants"] if c["id"] == event["target_id"]), {})
-    
+
     faction = target.get("faction")
+    campaign_id = state.get("campaign_id")
 
     damage_types = " ".join(
         entry.get("damage_type", "") for entry in event.get("damage_entries", [])
     )
 
-    # 1. Retrieve Lore
-    lore_filters = {}
-    if faction:
-        lore_filters["faction"] = faction
+    # 1. Retrieve Lore (this campaign only; empty when there is no campaign)
+    lore_context = ""
+    if campaign_id:
+        lore_query = f"{target.get('name', '')} vulnerabilities tactics {damage_types}"
+        lore_context = kb.retrieve_campaign_lore(
+            lore_query, campaign_id=campaign_id, faction=faction, top_k=2
+        )
 
-    lore_query = f"{target.get('name', '')} vulnerabilities tactics {damage_types}"
-    lore_context = kb.retrieve_context(query=lore_query, metadata_filters=lore_filters, top_k=2)
-
-    # 2. Retrieve Rules
-    rule_filters = {"category": "rule"}
+    # 2. Retrieve Rules (public SRD)
     condition_name = event.get("condition_name") or ""
     rule_query = f"{damage_types} damage rules conditions {condition_name}"
-    rule_context = kb.retrieve_context(query=rule_query, metadata_filters=rule_filters, top_k=2)
-    
+    rule_context = kb.retrieve_rules(rule_query, top_k=2)
+
     combined_context = f"--- LORE ---\n{lore_context}\n\n--- RULES ---\n{rule_context}"
-    
+
     return {"retrieved_lore": combined_context}
 
 

@@ -17,9 +17,14 @@ chroma_db/
 test_chroma_db/
 state_db/
 
+# Private campaign content must never enter the image or the build context.
+data/campaigns/
+campaigns/
+
 # Dev/test-only source, excluded from the runtime image.
 tests/
 eval_harness.py
+fake_ai.py
 
 # Frontend build artifacts -- the source itself (src/, package.json, etc.)
 # IS needed now, since the Dockerfile's frontend-build stage runs from here.

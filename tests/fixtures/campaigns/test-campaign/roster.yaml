@@ -1,0 +1,20 @@
+combatants:
+  - id: pc_fixture_hero
+    name: Fixture Hero
+    type: player
+    armor_class: 16
+    max_hp: 40
+    current_hp: 40
+    conditions: []
+    tactical_tags: [Player]
+    resources: {}
+  - id: npc_fixture_guard
+    name: Iron Silk Guard
+    type: enemy
+    armor_class: 13
+    max_hp: 20
+    current_hp: 20
+    conditions: []
+    tactical_tags: [Defensive]
+    resources: {}
+    faction: iron_silk_bureau

@@ -1,3 +1,8 @@
+"""Live tier: the combat graph end to end with the real Gemini model (needs GOOGLE_API_KEY).
+
+Uses the synthetic fixture campaign. The offline version of these checks (fake
+chat model, no key) is test_graph_lore_scoping.py.
+"""
 import pytest
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -5,6 +10,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from schemas import CombatGraphState, DamageType
 from knowledge_engine import CombatKnowledgeBase
 from combat_graph import create_combat_engine
+from support import FIXTURE_CAMPAIGN_ID, FIXTURE_LORE_DIR, RULES_DIR, SENTINEL, release_kb
 
 load_dotenv()
 
@@ -13,11 +19,13 @@ load_dotenv()
 def combat_engine(tmp_path_factory):
     test_db = str(tmp_path_factory.mktemp("graph_chroma"))
     kb = CombatKnowledgeBase(persist_dir=test_db, collection_name="test_graph_kb")
-    kb.ingest_directory("./data/lore", category="lore")
-    kb.ingest_directory("./data/rules", category="rules")
-    
+    kb.sync_campaign(str(FIXTURE_LORE_DIR), FIXTURE_CAMPAIGN_ID)
+    kb.sync_rules(str(RULES_DIR))
+
     llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", streaming=True)
-    return create_combat_engine(kb=kb, llm=llm)
+    yield create_combat_engine(kb=kb, llm=llm)
+
+    release_kb(kb)
 
 
 def test_combat_graph_execution(combat_engine):
@@ -37,8 +45,8 @@ def test_combat_graph_execution(combat_engine):
                 "tactical_tags": ["Defensive"],
                 "resources": {},
                 # Must match the lore corpus's faction slug convention
-                # (data/lore/factions/*.md), not the human-readable name --
-                # metadata filtering is an exact match, not fuzzy.
+                # (the fixture campaign's lore/factions/*.md), not the
+                # human-readable name -- metadata filtering is an exact match.
                 "faction": "iron_silk_bureau"
             }
         ],
@@ -49,6 +57,8 @@ def test_combat_graph_execution(combat_engine):
             "condition_action": "add"
         },
         "gm_notes": "The guard is fighting on a crumbling rope bridge over a ravine.",
+        # Owner mode: lore is only retrieved for an explicit campaign.
+        "campaign_id": FIXTURE_CAMPAIGN_ID,
         "retrieved_lore": "",
         "streamed_narration": ""
     }
@@ -61,9 +71,10 @@ def test_combat_graph_execution(combat_engine):
     assert "Incapacitated" in target["conditions"]
     assert "Bleed" in target["conditions"]
 
-    # 2. Verify LlamaIndex retrieved context
+    # 2. Verify LlamaIndex retrieved context (campaign lore + public rules)
     assert len(final_state["retrieved_lore"]) > 0
     assert "Iron Silk" in final_state["retrieved_lore"]
+    assert SENTINEL in final_state["retrieved_lore"]
 
     # 3. Verify narration output generated
     assert len(final_state["streamed_narration"]) > 0

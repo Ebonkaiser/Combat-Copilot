@@ -40,10 +40,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=backend-deps /install /usr/local
 
 # Backend source (same exclusions as the original backend-only image: no
-# tests/, eval_harness.py, .env, or chroma_db/ -- the latter is generated
-# output that belongs in a volume, not the image).
-COPY schemas.py state_engine.py knowledge_engine.py combat_graph.py server.py resilience.py persistence.py ./
-COPY data/lore/ ./data/lore/
+# tests/, eval_harness.py, fake_ai.py, .env, or chroma_db/ -- the latter is
+# generated output that belongs in a volume, not the image).
+COPY schemas.py state_engine.py knowledge_engine.py combat_graph.py server.py resilience.py persistence.py campaigns.py ./
+# Only the public SRD rules are baked in. Campaign lore is private: it is NOT
+# copied (and is .dockerignore'd) -- it is bind-mounted read-only at
+# /app/data/campaigns at runtime (see docker-compose.yml).
 COPY data/rules/ ./data/rules/
 
 # Compiled frontend + nginx config.
