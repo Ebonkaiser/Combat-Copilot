@@ -7,9 +7,9 @@ extract = CombatKnowledgeBase.extract_yaml_frontmatter
 
 
 def test_extracts_metadata_and_strips_the_block():
-    metadata, body = extract("---\ncategory: npc\nfaction: iron_silk_bureau\ntags: [a, b]\n---\n\n# Title\n\nBody text.\n")
+    metadata, body = extract("---\ncategory: npc\nfaction: amber_quill_chancery\ntags: [a, b]\n---\n\n# Title\n\nBody text.\n")
 
-    assert metadata == {"category": "npc", "faction": "iron_silk_bureau", "tags": ["a", "b"]}
+    assert metadata == {"category": "npc", "faction": "amber_quill_chancery", "tags": ["a", "b"]}
     assert body == "# Title\n\nBody text."
 
 

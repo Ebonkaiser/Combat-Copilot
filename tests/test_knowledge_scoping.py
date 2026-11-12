@@ -75,17 +75,17 @@ def test_restarting_the_backend_twice_does_not_change_the_collection_count(make_
 
 TARGETED_QUERIES = [
     "SENTINEL_LORE_7Q2",
-    "SENTINEL_LORE_7Q2 Iron Silk Bureau",
-    "Iron Silk Bureau secret police",
-    "Iron Silk Bureau vulnerabilities and tactics",
-    "Iron Silk guards fear open flame",
+    "SENTINEL_LORE_7Q2 Amber Quill Chancery",
+    "Amber Quill Chancery secret police",
+    "Amber Quill Chancery vulnerabilities and tactics",
+    "Amber Quill guards fear open flame",
     "lacquered armor fire damage breaks their formation",
     "fixture empire secret police guards scattering",
-    "Cloud Tread Syndicate informant harbor warehouses",
+    "Tidewater Lantern Cartel informant harbor warehouses",
     "SENTINEL_LORE_OTHER_FACTION",
     "SENTINEL_LORE_NO_FACTION foggy harbor smugglers",
     "rotting piers where smugglers meet after dark",
-    "Fixture Harbor Fixture Informant Iron Silk Bureau (fixture)",
+    "Fixture Harbor Fixture Informant Amber Quill Chancery (fixture)",
 ]
 
 
@@ -112,7 +112,7 @@ def test_there_are_at_least_ten_distinct_targeted_queries():
 
 
 def test_a_campaign_id_returns_the_sentinel_for_a_targeted_query(kb):
-    result = kb.retrieve_context("SENTINEL_LORE_7Q2 Iron Silk Bureau fear fire", campaign_id=FIXTURE_CAMPAIGN_ID)
+    result = kb.retrieve_context("SENTINEL_LORE_7Q2 Amber Quill Chancery fear fire", campaign_id=FIXTURE_CAMPAIGN_ID)
     assert SENTINEL in result
 
     assert SENTINEL in kb.retrieve_campaign_lore("SENTINEL_LORE_7Q2", FIXTURE_CAMPAIGN_ID, top_k=1)
@@ -162,7 +162,7 @@ def test_out_of_scope_chunks_are_dropped_even_if_the_vector_store_ignores_the_fi
     monkeypatch.setattr(kb.index, "as_retriever", filterless)
 
     with caplog.at_level(logging.ERROR, logger="combat_copilot.knowledge"):
-        result = kb.retrieve_rules("SENTINEL_LORE_7Q2 Iron Silk Bureau fire", top_k=5)
+        result = kb.retrieve_rules("SENTINEL_LORE_7Q2 Amber Quill Chancery fire", top_k=5)
 
     assert not any(s in result for s in ALL_SENTINELS)
     assert "outside namespace" in caplog.text
@@ -172,7 +172,7 @@ def test_out_of_scope_chunks_are_dropped_even_if_the_vector_store_ignores_the_fi
 
 def test_faction_filter_narrows_lore_to_that_faction(kb):
     result = kb.retrieve_campaign_lore(
-        "secrets", FIXTURE_CAMPAIGN_ID, faction="cloud_tread_syndicate", top_k=5
+        "secrets", FIXTURE_CAMPAIGN_ID, faction="tidewater_lantern_cartel", top_k=5
     )
 
     assert SENTINEL_OTHER_FACTION in result
@@ -196,13 +196,13 @@ def test_one_campaign_never_sees_another_campaigns_lore(kb, tmp_path):
     other = tmp_path / "other-lore"
     write_lore(
         other, "secret.md",
-        f"---\nfaction: iron_silk_bureau\ntitle: Other\n---\n\n{OTHER_SECRET} iron silk bureau fire guards\n",
+        f"---\nfaction: amber_quill_chancery\ntitle: Other\n---\n\n{OTHER_SECRET} amber quill chancery fire guards\n",
     )
     kb.sync_campaign(str(other), "other-campaign")
-    query = f"{OTHER_SECRET} iron silk bureau fire guards"
+    query = f"{OTHER_SECRET} amber quill chancery fire guards"
 
     assert OTHER_SECRET in kb.retrieve_campaign_lore(query, "other-campaign")
-    for faction in (None, "iron_silk_bureau"):
+    for faction in (None, "amber_quill_chancery"):
         assert OTHER_SECRET not in kb.retrieve_campaign_lore(query, FIXTURE_CAMPAIGN_ID, faction=faction, top_k=5)
         assert SENTINEL not in kb.retrieve_campaign_lore(query, "other-campaign", faction=faction, top_k=5)
     assert OTHER_SECRET not in kb.retrieve_context(query, campaign_id=None, top_k=5)
@@ -308,7 +308,7 @@ def test_crlf_line_endings_do_not_change_documents_or_hide_frontmatter(make_kb, 
 
     assert (result.added, result.removed, result.unchanged) == (0, 0, 3)
     assert SENTINEL_OTHER_FACTION in kb.retrieve_campaign_lore(
-        "secrets", FIXTURE_CAMPAIGN_ID, faction="cloud_tread_syndicate", top_k=5
+        "secrets", FIXTURE_CAMPAIGN_ID, faction="tidewater_lantern_cartel", top_k=5
     )
 
 
@@ -342,7 +342,7 @@ def test_only_visible_markdown_and_text_files_are_synced(make_kb, tmp_path):
 
 def test_purge_removes_campaigns_that_are_no_longer_on_disk(kb, tmp_path):
     other = tmp_path / "other-lore"
-    write_lore(other, "secret.md", f"{OTHER_SECRET} iron silk bureau\n")
+    write_lore(other, "secret.md", f"{OTHER_SECRET} amber quill chancery\n")
     kb.sync_campaign(str(other), "gone-campaign")
 
     assert kb.purge_campaigns_except([FIXTURE_CAMPAIGN_ID]) == ["gone-campaign"]

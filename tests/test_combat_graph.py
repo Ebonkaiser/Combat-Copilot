@@ -36,7 +36,7 @@ def test_combat_graph_execution(combat_engine):
         "combatants": [
             {
                 "id": "enemy_1",
-                "name": "Iron Silk Guard",
+                "name": "Amber Quill Guard",
                 "type": "enemy",
                 "armor_class": 13,
                 "max_hp": 20,
@@ -47,7 +47,7 @@ def test_combat_graph_execution(combat_engine):
                 # Must match the lore corpus's faction slug convention
                 # (the fixture campaign's lore/factions/*.md), not the
                 # human-readable name -- metadata filtering is an exact match.
-                "faction": "iron_silk_bureau"
+                "faction": "amber_quill_chancery"
             }
         ],
         "last_event": {
@@ -73,7 +73,7 @@ def test_combat_graph_execution(combat_engine):
 
     # 2. Verify LlamaIndex retrieved context (campaign lore + public rules)
     assert len(final_state["retrieved_lore"]) > 0
-    assert "Iron Silk" in final_state["retrieved_lore"]
+    assert "Amber Quill" in final_state["retrieved_lore"]
     assert SENTINEL in final_state["retrieved_lore"]
 
     # 3. Verify narration output generated

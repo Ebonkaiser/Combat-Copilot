@@ -13,7 +13,7 @@ import {
 // the development helper, and the "narrator" echoes the prompt it was given, so the narration on
 // screen shows exactly which lore reached the model.
 const CAMPAIGN_ID = 'test-campaign';
-const SENTINEL = 'SENTINEL_LORE_7Q2'; // planted in the fixture campaign's Iron Silk Bureau lore
+const SENTINEL = 'SENTINEL_LORE_7Q2'; // planted in the fixture campaign's Amber Quill Chancery lore
 const OTHER_SENTINEL = 'SENTINEL_LORE_OTHER_FACTION'; // a different faction's lore, same campaign
 
 // Picking a campaign starts an EMPTY encounter: nobody is added for the owner. Its characters are a
@@ -42,9 +42,9 @@ test.describe('anonymous mode', () => {
 
   test('narration gets the public rules but none of the campaign lore', async ({ page }) => {
     await openApp(page);
-    await addCombatant(page, { name: 'Iron Silk Guard', type: 'enemy', initiative: 10, hp: 20, ac: 13, faction: 'iron_silk_bureau' });
+    await addCombatant(page, { name: 'Amber Quill Guard', type: 'enemy', initiative: 10, hp: 20, ac: 13, faction: 'amber_quill_chancery' });
 
-    await damage(page, 'Iron Silk Guard');
+    await damage(page, 'Amber Quill Guard');
 
     const stream = page.locator('.stream');
     await expect(stream).toContainText('--- RULES ---');
@@ -150,7 +150,7 @@ test.describe('owner mode', () => {
     await expect(roster.locator('option')).toHaveText([
       '-- Custom enemy / NPC --',
       'Fixture Hero (player)',
-      'Iron Silk Guard (enemy)',
+      'Amber Quill Guard (enemy)',
     ]);
 
     await roster.selectOption({ label: 'Fixture Hero (player)' });
@@ -179,7 +179,7 @@ test.describe('owner mode', () => {
     await page.getByTestId('add-combatant-btn').click(); // each character can be added once
     await expect(page.getByTestId('roster-select').locator('option')).toHaveText([
       '-- Custom enemy / NPC --',
-      'Iron Silk Guard (enemy)',
+      'Amber Quill Guard (enemy)',
     ]);
   });
 
@@ -187,9 +187,9 @@ test.describe('owner mode', () => {
     await openApp(page);
     await signInAsOwner(page);
     await pickCampaign(page);
-    await addFromRoster(page, 'Iron Silk Guard (enemy)');
+    await addFromRoster(page, 'Amber Quill Guard (enemy)');
 
-    await damage(page, 'Iron Silk Guard');
+    await damage(page, 'Amber Quill Guard');
 
     const stream = page.locator('.stream');
     await expect(stream).toContainText(SENTINEL);
@@ -207,7 +207,7 @@ test.describe('owner mode', () => {
     await signInAsOwner(page);
     await pickCampaign(page);
     await addFromRoster(page, 'Fixture Hero (player)');
-    await addFromRoster(page, 'Iron Silk Guard (enemy)', 5);
+    await addFromRoster(page, 'Amber Quill Guard (enemy)', 5);
     await page.getByTestId('start-combat-btn').click();
     await expect(page.getByTestId('next-turn-btn')).toBeVisible();
     const select = page.getByTestId('campaign-select');

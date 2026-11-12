@@ -111,7 +111,7 @@ def test_gitignore_lists_the_private_campaign_locations(pattern):
 @pytest.mark.parametrize(
     "path",
     [
-        "data/campaigns/light-and-magic/lore/factions/iron_silk_bureau.md",
+        "data/campaigns/light-and-magic/lore/factions/amber_quill_chancery.md",
         "data/campaigns/anything/roster.yaml",
         "campaigns/light-and-magic/campaign.yaml",
     ],

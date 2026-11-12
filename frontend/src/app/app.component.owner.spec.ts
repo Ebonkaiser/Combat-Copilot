@@ -26,7 +26,7 @@ describe('AppComponent: anonymous and owner modes', () => {
     ...overrides,
   });
   const hero = makeCombatant({ id: 'pc_hero', name: 'Hero', type: 'player', max_hp: 30, current_hp: 30 });
-  const guard = makeCombatant({ id: 'npc_guard', name: 'Iron Silk Guard', faction: 'iron_silk_bureau' });
+  const guard = makeCombatant({ id: 'npc_guard', name: 'Amber Quill Guard', faction: 'amber_quill_chancery' });
 
   const makeEncounter = (overrides: Partial<EncounterState> = {}): EncounterState => ({
     encounter_id: 'enc_server_1', round: 1, active_turn_index: 0, combatants: [],
@@ -695,14 +695,14 @@ describe('AppComponent: anonymous and owner modes', () => {
     it('lists every campaign character, with nobody added yet', () => {
       const fixture = openDialog();
 
-      expect(rosterOptions(fixture)).toEqual(['-- Custom enemy / NPC --', 'Hero (player)', 'Iron Silk Guard (enemy)', 'Sage (player)']);
+      expect(rosterOptions(fixture)).toEqual(['-- Custom enemy / NPC --', 'Hero (player)', 'Amber Quill Guard (enemy)', 'Sage (player)']);
       expect(combat.encounter()?.combatants).toEqual([]);
     });
 
     it('leaves out characters who are already in the encounter', () => {
       const fixture = openDialog([hero]);
 
-      expect(rosterOptions(fixture)).toEqual(['-- Custom enemy / NPC --', 'Iron Silk Guard (enemy)', 'Sage (player)']);
+      expect(rosterOptions(fixture)).toEqual(['-- Custom enemy / NPC --', 'Amber Quill Guard (enemy)', 'Sage (player)']);
     });
 
     it('says when everyone is already there, and when the campaign lists nobody', () => {
@@ -721,11 +721,11 @@ describe('AppComponent: anonymous and owner modes', () => {
 
       const comp = fixture.componentInstance;
       expect(comp.newCombatant).toEqual({
-        name: 'Iron Silk Guard', type: 'enemy', armor_class: 12, max_hp: 10, current_hp: 10, faction: 'iron_silk_bureau',
+        name: 'Amber Quill Guard', type: 'enemy', armor_class: 12, max_hp: 10, current_hp: 10, faction: 'amber_quill_chancery',
         initiative: 0, weapon_equipped: 'Unarmed',
       });
       const name = el(fixture, 'combatant-name') as HTMLInputElement;
-      expect(name.value).toBe('Iron Silk Guard');
+      expect(name.value).toBe('Amber Quill Guard');
       expect(name.disabled).toBeTrue();
       expect((el(fixture, 'combatant-type') as HTMLSelectElement).disabled).toBeTrue();
       expect((el(fixture, 'combatant-type') as HTMLSelectElement).value).toBe('enemy');

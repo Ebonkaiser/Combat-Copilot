@@ -29,7 +29,7 @@ def kb(make_kb):
     return kb
 
 
-def make_state(campaign_id=FIXTURE_CAMPAIGN_ID, faction="iron_silk_bureau", name="Iron Silk Guard", condition=None):
+def make_state(campaign_id=FIXTURE_CAMPAIGN_ID, faction="amber_quill_chancery", name="Amber Quill Guard", condition=None):
     state = {
         "encounter_id": "enc_test",
         "round": 1,
@@ -77,14 +77,14 @@ def test_a_campaign_gets_its_faction_lore_and_the_rules(kb):
     retrieved = retrieve_lore_node(make_state(), kb)["retrieved_lore"]
 
     lore, rules = lore_and_rules(retrieved)
-    assert "Iron Silk" in lore
+    assert "Amber Quill" in lore
     assert SENTINEL in lore
     assert SENTINEL_OTHER_FACTION not in retrieved  # the faction filter still applies
     assert rules != ""
 
 
 def test_the_faction_filter_still_selects_the_targets_faction(kb):
-    state = make_state(faction="cloud_tread_syndicate", name="Fixture Informant")
+    state = make_state(faction="tidewater_lantern_cartel", name="Fixture Informant")
 
     lore, _ = lore_and_rules(retrieve_lore_node(state, kb)["retrieved_lore"])
 

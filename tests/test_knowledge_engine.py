@@ -36,16 +36,16 @@ def temp_kb(tmp_path):
 def test_retrieval_with_faction_filter(temp_kb):
     # The faction value must be the lore corpus's slug convention (see the
     # frontmatter of tests/fixtures/campaigns/test-campaign/lore/factions/*.md),
-    # e.g. "iron_silk_bureau", not "Iron Silk": the filter is an exact match.
+    # e.g. "amber_quill_chancery", not "Amber Quill": the filter is an exact match.
     result = temp_kb.retrieve_context(
         query="vulnerabilities and behaviors",
         campaign_id=FIXTURE_CAMPAIGN_ID,
-        faction="iron_silk_bureau",
+        faction="amber_quill_chancery",
         top_k=3,
     )
 
     assert len(result) > 0
-    assert "Iron Silk" in result
+    assert "Amber Quill" in result
 
 
 def test_retrieval_general_rules(temp_kb):
@@ -58,7 +58,7 @@ def test_retrieval_general_rules(temp_kb):
 @pytest.mark.parametrize(
     "query",
     [
-        "What does the Iron Silk Bureau fear?",
+        "What does the Amber Quill Chancery fear?",
         "secret police guards and their weaknesses",
         "harbor smugglers and informants",
     ],

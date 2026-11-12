@@ -36,8 +36,8 @@ from support import (
 OTHER_CAMPAIGN_ID = "alpha-camp"
 OTHER_SENTINEL = "ALPHA_SENTINEL_9X2"
 GUARD = {
-    "id": "guard", "name": "Iron Silk Guard", "type": "enemy", "armor_class": 13,
-    "max_hp": 20, "current_hp": 20, "faction": "iron_silk_bureau",
+    "id": "guard", "name": "Amber Quill Guard", "type": "enemy", "armor_class": 13,
+    "max_hp": 20, "current_hp": 20, "faction": "amber_quill_chancery",
 }
 MISSING = {"detail": "Encounter not found"}
 
@@ -59,7 +59,7 @@ def campaigns_dir(tmp_path):
         encoding="utf-8",
     )
     (other / "lore" / "alpha.md").write_text(
-        f"---\nfaction: iron_silk_bureau\ntitle: Alpha\n---\n\n{OTHER_SENTINEL} iron silk bureau guards fire\n",
+        f"---\nfaction: amber_quill_chancery\ntitle: Alpha\n---\n\n{OTHER_SENTINEL} amber quill chancery guards fire\n",
         encoding="utf-8",
     )
     return root
@@ -179,7 +179,7 @@ def test_the_owner_gets_a_campaign_roster(owner_api):
     assert response.status_code == 200
     combatants = response.json()["combatants"]
     assert [c["id"] for c in combatants] == ["pc_fixture_hero", "npc_fixture_guard"]
-    assert combatants[1]["faction"] == "iron_silk_bureau"
+    assert combatants[1]["faction"] == "amber_quill_chancery"
     assert combatants[1]["max_hp"] == combatants[1]["current_hp"] == 20
 
 
@@ -280,7 +280,7 @@ def test_creation_fields_round_trip(api):
     encounter = create(api, round=3, active_turn_index=1, gm_notes="fog", combat_started=True, combatants=[GUARD])
 
     assert (encounter["round"], encounter["active_turn_index"], encounter["gm_notes"], encounter["combat_started"]) == (3, 1, "fog", True)
-    assert stored(api, encounter["encounter_id"]).combatants[0].name == "Iron Silk Guard"
+    assert stored(api, encounter["encounter_id"]).combatants[0].name == "Amber Quill Guard"
 
 
 # ========================================= owner-scoped encounters belong to the owner

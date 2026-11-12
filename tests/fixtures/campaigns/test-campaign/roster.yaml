@@ -9,7 +9,7 @@ combatants:
     tactical_tags: [Player]
     resources: {}
   - id: npc_fixture_guard
-    name: Iron Silk Guard
+    name: Amber Quill Guard
     type: enemy
     armor_class: 13
     max_hp: 20
@@ -17,4 +17,4 @@ combatants:
     conditions: []
     tactical_tags: [Defensive]
     resources: {}
-    faction: iron_silk_bureau
+    faction: amber_quill_chancery

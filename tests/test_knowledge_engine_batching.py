@@ -70,7 +70,7 @@ def test_sync_applies_yaml_frontmatter_metadata_before_batching(make_kb, embedde
     kb.sync_campaign(str(FIXTURE_LORE_DIR), FIXTURE_CAMPAIGN_ID)
 
     inserted_nodes = kb.index.insert_nodes.call_args.args[0]
-    assert any(n.metadata.get("faction") == "iron_silk_bureau" for n in inserted_nodes)
+    assert any(n.metadata.get("faction") == "amber_quill_chancery" for n in inserted_nodes)
     assert all(n.metadata.get("campaign_id") == FIXTURE_CAMPAIGN_ID for n in inserted_nodes)
     assert all("category" in n.metadata for n in inserted_nodes)
 

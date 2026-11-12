@@ -40,12 +40,12 @@ data/campaigns/<slug>/            slug: [a-z0-9-]+, must equal the id below ("sr
 # campaign.yaml                    # roster.yaml
 id: light-and-magic                combatants:
 name: Light and Magic                - id: npc_guard
-description: Short line for the        name: Iron Silk Guard
+description: Short line for the        name: Amber Quill Guard
   switcher                             type: enemy
                                        armor_class: 13
                                        max_hp: 20
                                        current_hp: 20
-                                       faction: iron_silk_bureau   # a lore faction slug (exact match)
+                                       faction: amber_quill_chancery   # a lore faction slug (exact match)
 ```
 
 Lore is synced into the vector store at startup by content hash: unchanged files cost nothing, edited files are re-embedded, deleted files are removed. A bad campaign folder is logged and skipped; the others still load. Restart the backend (or container) after editing.

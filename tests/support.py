@@ -18,7 +18,7 @@ FIXTURE_LORE_DIR = FIXTURE_CAMPAIGN_DIR / "lore"
 
 # Unique strings planted in the fixture campaign's lore. If one of these ever
 # shows up in text served to an anonymous user, campaign lore has leaked.
-SENTINEL = "SENTINEL_LORE_7Q2"            # Iron Silk Bureau faction doc
+SENTINEL = "SENTINEL_LORE_7Q2"            # Amber Quill Chancery faction doc
 SENTINEL_OTHER_FACTION = "SENTINEL_LORE_OTHER_FACTION"  # a different faction's doc
 SENTINEL_NO_FACTION = "SENTINEL_LORE_NO_FACTION"        # a doc with no faction at all
 ALL_SENTINELS = (SENTINEL, SENTINEL_OTHER_FACTION, SENTINEL_NO_FACTION)

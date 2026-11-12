@@ -46,7 +46,7 @@ def test_fixture_campaign_loads():
     campaign = campaigns[FIXTURE_CAMPAIGN_ID]
     assert campaign.name == "Test Campaign"
     assert [c.id for c in campaign.roster] == ["pc_fixture_hero", "npc_fixture_guard"]
-    assert campaign.roster[1].faction == "iron_silk_bureau"
+    assert campaign.roster[1].faction == "amber_quill_chancery"
     assert campaign.lore_dir == FIXTURE_CAMPAIGN_DIR / "lore"
     assert campaign.lore_dir.is_dir()
 
