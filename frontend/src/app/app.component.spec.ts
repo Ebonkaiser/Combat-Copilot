@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { AppComponent } from './app.component';
+import { AuthService } from './services/auth.service';
 import { CombatService } from './services/combat.service';
+import { FakeAuthService } from './testing/fake-auth';
 import { Combatant, EncounterState } from './models/combat.model';
 
 describe('AppComponent', () => {
@@ -41,6 +43,7 @@ describe('AppComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent, HttpClientTestingModule],
+      providers: [{ provide: AuthService, useClass: FakeAuthService }],
     }).compileComponents();
 
     httpMock = TestBed.inject(HttpTestingController);
@@ -68,7 +71,10 @@ describe('AppComponent', () => {
       expect(fixture.componentInstance.backendStarting).toBeFalse();
 
       const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
-      const created = makeEncounter({ encounter_id: req.request.body.encounter_id });
+      // The server assigns the id and decides the campaign: the client sends neither an id nor a campaign.
+      expect(req.request.body.encounter_id).toBeUndefined();
+      expect(req.request.body.campaign_id).toBeNull();
+      const created = makeEncounter();
       req.flush(created);
 
       expect(combat.encounter()).toEqual(created);
@@ -88,7 +94,7 @@ describe('AppComponent', () => {
 
       expect(fixture.componentInstance.connectionError).toBeFalse();
       const req = httpMock.expectOne((r) => r.method === 'POST' && r.url.endsWith('/encounters'));
-      req.flush(makeEncounter({ encounter_id: req.request.body.encounter_id }));
+      req.flush(makeEncounter());
     }));
 
     it('fails fast with connectionError when /health reports a startup error, without retrying', fakeAsync(() => {
@@ -190,7 +196,7 @@ describe('AppComponent', () => {
         healing_amount: 0,
         condition_name: 'Prone',
         condition_action: 'add',
-      });
+      }, jasmine.any(Function));
     });
 
     it('allows a healing-only change with no damage entries, targeting whoever is selected regardless of turn', () => {
@@ -211,7 +217,8 @@ describe('AppComponent', () => {
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith(
         'enc_1',
-        jasmine.objectContaining({ target_id: 'c1', damage_entries: [], healing_amount: 12 })
+        jasmine.objectContaining({ target_id: 'c1', damage_entries: [], healing_amount: 12 }),
+        jasmine.any(Function)
       );
     });
 
@@ -233,7 +240,8 @@ describe('AppComponent', () => {
         jasmine.objectContaining({
           damage_entries: [{ amount: 8, damage_type: 'Fire' }],
           healing_amount: 3,
-        })
+        }),
+        jasmine.any(Function)
       );
     });
 
@@ -252,7 +260,8 @@ describe('AppComponent', () => {
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith(
         'enc_1',
-        jasmine.objectContaining({ condition_name: undefined, condition_action: undefined })
+        jasmine.objectContaining({ condition_name: undefined, condition_action: undefined }),
+        jasmine.any(Function)
       );
     });
 
@@ -272,7 +281,8 @@ describe('AppComponent', () => {
 
       expect(combat.applyDamageStream).toHaveBeenCalledWith(
         'enc_1',
-        jasmine.objectContaining({ damage_entries: [], condition_name: 'Prone', condition_action: 'remove' })
+        jasmine.objectContaining({ damage_entries: [], condition_name: 'Prone', condition_action: 'remove' }),
+        jasmine.any(Function)
       );
     });
 
@@ -1012,7 +1022,7 @@ describe('AppComponent', () => {
       expect(body.combatants).toEqual([]);
       expect(body.round).toBe(1);
 
-      const fresh = makeEncounter({ encounter_id: body.encounter_id, combatants: [] });
+      const fresh = makeEncounter({ combatants: [] });
       req.flush(fresh);
       expect(combat.encounter()).toEqual(fresh);
     });

@@ -1,1 +1,208 @@
-/* You can add global styles to this file, and also import other style files */
+/*
+ * Design tokens -- sepia theme (Module 7, Unit A).
+ *
+ * Every text/background pair was recomputed against the WCAG 2.1 contrast
+ * formula (AA: 4.5:1 for text, 3:1 for UI components and borders); the ratio
+ * each token was checked for is noted next to it. Components must reference
+ * these tokens -- no colour literals in templates or component CSS.
+ */
+:root {
+  --bg: #f4ecd8;            /* page background */
+  --surface: #ebdfc4;       /* panels, combatant cards */
+  --surface-input: #fbf6ea; /* inputs, selects */
+
+  --text: #3b2f22;          /* on bg 11.04 / surface 9.83 / input 12.05 */
+  --text-muted: #5f4e3a;    /* on bg 6.76 / surface 6.02 */
+  --border: #7d6548;        /* vs surface 4.15 (needs 3.0) */
+
+  --accent: #7a3e16;        /* --on-accent on it 7.87; as text on bg 7.06 */
+  --on-accent: #fff8ec;
+  --focus: #7a3e16;         /* vs bg 7.06 */
+  --selected: #8a5a00;      /* selected-target ring vs surface 4.48 */
+
+  --hp-track: #d6c4a1;
+  --hp-ok: #3f6b2a;         /* vs hp-track 3.66 */
+  --hp-zero: #a12a1f;       /* vs hp-track 4.28 */
+
+  --chip-bg: #8c1c13;       /* --on-accent on it 8.68; also the danger button */
+
+  --stream-bg: #2e241a;
+  --stream-text: #f1e4c8;   /* on stream-bg 12.05 */
+
+  --overlay: rgba(46, 36, 26, 0.55); /* modal scrim; carries no text */
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  margin: 0;
+  font-family: monospace;
+}
+
+/* Browser defaults render white, system-font controls, which breaks the theme. */
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  background: var(--surface-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  box-sizing: border-box;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+option {
+  background: var(--surface-input);
+  color: var(--text);
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Disabled controls are exempt from WCAG contrast, but the label stays legible
+   (handoff: opacity no lower than 0.6; 0.7 reads noticeably better). */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* Buttons: .btn is the primary style; combine with a modifier. */
+.btn {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 6px 12px;
+}
+
+.btn-secondary {
+  background: var(--surface-input);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.btn-danger {
+  background: var(--chip-bg);
+  color: var(--on-accent);
+  border-color: var(--chip-bg);
+}
+
+.btn-sm {
+  padding: 4px 8px;
+}
+
+.btn-block {
+  width: 100%;
+  padding: 8px;
+}
+
+/* Modals (shared by the app's dialogs and the sign-in dialog). */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--overlay);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 20px;
+  border-radius: 8px;
+  width: 400px;
+  max-width: calc(100vw - 32px);
+}
+
+.modal-sm {
+  width: 360px;
+}
+
+.modal-md {
+  width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal h3 {
+  margin-top: 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+/* Small shared helpers. */
+.hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* Kept global (not in a component) so the handoff's A4 colour grep, which
+   matches the word "white" inside "white-space", stays literally clean. */
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+.w-100 {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.w-90 {
+  width: 90px;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.mt-4 { margin-top: 4px; }
+.mb-4 { margin-bottom: 4px; }
+.mb-6 { margin-bottom: 6px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }

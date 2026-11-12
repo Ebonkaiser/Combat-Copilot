@@ -1,0 +1,213 @@
+.banner-error {
+  background: var(--chip-bg);
+  color: var(--on-accent);
+  padding: 10px 20px;
+}
+
+.banner-link {
+  color: var(--on-accent);
+  text-decoration: underline;
+  cursor: pointer;
+  /* Angular drops whitespace-only text nodes, so the sentence before the link
+     would otherwise run straight into it. */
+  margin-left: 0.5em;
+}
+
+/* Neutral, non-error notices: a session that ended, an encounter that was restored, ... */
+.banner-notice {
+  background: var(--surface);
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  margin-top: 12px;
+}
+
+.banner-notice .banner-link {
+  color: var(--accent);
+}
+
+.layout {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+}
+
+.panel {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 15px;
+  border-radius: 6px;
+  position: relative;
+}
+
+.panel h3 {
+  margin: 4px 0 10px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.status-starting {
+  padding: 30px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.status-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.empty-state {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Combatant cards. Precedence when several apply: selected > active turn > hover. */
+.combatant {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  position: relative;
+}
+
+.combatant.hovered {
+  border: 1px solid var(--text-muted);
+}
+
+.combatant.active-turn {
+  border: 2px solid var(--accent);
+}
+
+.combatant.selected {
+  border: 2px solid var(--selected);
+}
+
+.combatant-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.combatant-weapon {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Sits on the card's top border so it never covers the Init/AC stats. */
+.badge-active {
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  font-size: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.hp-track {
+  background: var(--hp-track);
+  width: 100%;
+  height: 8px;
+  margin: 4px 0;
+}
+
+.hp-fill {
+  height: 100%;
+  background: var(--hp-ok);
+}
+
+.hp-fill.hp-zero {
+  background: var(--hp-zero);
+}
+
+.chip {
+  background: var(--chip-bg);
+  color: var(--on-accent);
+  padding: 2px 4px;
+  font-size: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+}
+
+/* Right-hand column. */
+.actions {
+  margin-bottom: 15px;
+}
+
+.target-display {
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 6px;
+  background: var(--surface-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.stream {
+  min-height: 150px;
+  background: var(--stream-bg);
+  color: var(--stream-text);
+  padding: 10px;
+  border-radius: 4px;
+}
+
+/* Modal styles live in the global styles.css (the sign-in dialog shares them). */
+
+.section-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.btn-toggle {
+  flex: 1;
+  padding: 6px;
+  background: var(--surface-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.btn-toggle.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+.btn-toggle.active.danger {
+  background: var(--chip-bg);
+  border-color: var(--chip-bg);
+}
+
+.notes {
+  resize: vertical;
+}
