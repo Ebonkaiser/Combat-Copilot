@@ -29,6 +29,8 @@ Create one DigitalOcean Droplet and perform its one-time bootstrap, so that Unit
 1. Confirm Docker + Docker Compose are present (true by default via the marketplace image).
 2. Perform a **one-time `docker login` to GHCR** on the Droplet, using a personal access token with package-read scope. Without this, Unit D's pipeline will build and push images successfully and then silently fail at the deploy step, because the Droplet was never authorized to pull them. This is the same gap already flagged in the Unit D handoff — this doc is where it actually gets resolved.
 3. Place Unit C's `docker-compose.yml` and the gitignored `.env` (containing `GOOGLE_API_KEY`) onto the Droplet.
+   - **Module 7 additions:** the `.env` may also carry the owner-mode settings (`OWNER_EMAILS`, `SESSION_SECRET`, `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM`, `ALLOWED_ORIGINS`) — see `.env.example` for what each does. **Leave `OWNER_EMAILS` unset until the site is served over TLS:** with it unset the app runs anonymous-only (public SRD rules), which is the safe state for a plain-http Droplet.
+   - **Private campaign content** (lore + roster per campaign) is not in git or the image. Put it in `~/combat-copilot/campaigns/` next to `docker-compose.yml` (the provisioning script copies the local `data/campaigns/` there; compose mounts it read-only at `/app/data/campaigns`; the CI deploy does not copy it or update the Droplet's compose file). It must be readable by the container's non-root user (`chmod -R a+rX campaigns`), and the backend must be restarted (`docker compose restart`) to pick up edits. If the folder is empty or absent the app simply runs without campaigns.
 4. **Manually bring the stack up once, by hand**, before ever letting the automated pipeline touch it. This is the actual verification that steps 1–3 were done correctly.
 
 **TLS/HTTPS — explicit gap, not silently deferred**
@@ -44,7 +46,7 @@ Create one DigitalOcean Droplet and perform its one-time bootstrap, so that Unit
 - [ ] SSH key pair set up; private key saved as the exact GitHub Actions secret Unit D specifies.
 - [ ] Cloud Firewall configured to expose only the ports Unit C's mapping requires, plus SSH.
 - [ ] One-time GHCR login completed on the Droplet.
-- [ ] `docker-compose.yml` and `.env` present on the server.
+- [ ] `docker-compose.yml` and `.env` present on the server (and, if using owner mode, the `campaigns/` folder — owner mode only once TLS is in place).
 - [ ] Stack manually started once and confirmed reachable from a browser — not just "containers report running."
 - [ ] A stated plan for TLS exists (even if "not yet implemented, tracked as follow-up") rather than being silently absent.
 

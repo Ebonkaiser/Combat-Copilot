@@ -1,6 +1,8 @@
 # Secrets -- never commit
 .env
 .env.*
+# ...but the documented template (placeholders only, no values) is meant to be committed.
+!.env.example
 *.pem
 *_deploy_key
 *_deploy_key.pub

@@ -15,11 +15,17 @@
 #      images this workflow pushes. This workflow does not do that login.
 #
 # Test tiers (see tests/ for the full split rationale):
-#   - fast/free tier (job: test) -- test_state_engine.py + test_evals.py
-#     (18 of 19 tests; the 19th, test_judge_narration_live_model_smoke_test,
-#     self-skips via its own @pytest.mark.skipif when no key is present) +
-#     the Angular Karma suite. No API key, no network flakiness. Gates
-#     every push and PR.
+#   - fast/free tier (job: test) -- every backend test EXCEPT the two files that
+#     call Gemini (test_combat_graph.py, test_knowledge_engine.py), so new offline
+#     tests are picked up automatically; test_evals.py's live smoke test self-skips
+#     via its own @pytest.mark.skipif when no key is present. Plus the Angular
+#     Karma suite. No API key, no network flakiness. Gates every push and PR.
+#   - e2e tier (job: e2e) -- Playwright drives the real Angular app against the
+#     real FastAPI backend with ENV=development and FAKE_AI=1 (an offline echo
+#     narrator and hashing embeddings), on the synthetic fixture campaign. No API
+#     key, no Gemini. Covers anonymous vs owner mode, the campaign switcher, sign-in
+#     and the axe color-contrast checks. Gates the image build, so a deploy cannot
+#     happen without it.
 #   - live tier (job: test-live) -- test_combat_graph.py +
 #     test_knowledge_engine.py + test_evals.py again (so the live smoke test
 #     actually runs this time). Needs GOOGLE_API_KEY and real network calls
@@ -62,7 +68,7 @@ jobs:
         # "ImportError: cannot import name 'EncounterState' from 'schemas'
         # (unknown location)" / "ModuleNotFoundError: No module named
         # 'eval_harness'" -- exactly the CI failure this fixes.
-        run: python -m pytest tests/test_state_engine.py tests/test_evals.py tests/test_knowledge_engine_batching.py tests/test_server.py -v
+        run: python -m pytest tests --ignore=tests/test_combat_graph.py --ignore=tests/test_knowledge_engine.py -v
 
       - uses: actions/setup-node@v4
         with:
@@ -80,6 +86,46 @@ jobs:
         # ChromeHeadless refuses to start under CI's restricted sandbox
         # ("Running as root without --no-sandbox is not supported").
         run: npm test -- --watch=false --browsers=ChromeHeadlessCI
+
+  e2e:
+    name: End-to-end + accessibility (offline AI, system Chrome)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Playwright
+        working-directory: frontend
+        # playwright.config.ts starts its own isolated backend (ENV=development,
+        # FAKE_AI=1, GOOGLE_API_KEY blanked) and Angular dev server, and uses the
+        # Chrome already installed on the runner (channel: 'chrome') -- no browser
+        # download, no secrets.
+        run: npx playwright test
+
+      - name: Keep traces and screenshots of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: frontend/test-results
+          if-no-files-found: ignore
 
   test-live:
     name: Live API tests (Gemini-dependent)
@@ -103,7 +149,7 @@ jobs:
 
   build-and-push:
     name: Build and push image
-    needs: test-live
+    needs: [test-live, e2e]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     permissions:

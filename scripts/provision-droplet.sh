@@ -57,6 +57,23 @@ $SSH "mkdir -p $REMOTE_DIR"
 echo "==> Copying docker-compose.yml and .env"
 $SCP docker-compose.yml .env "$DROPLET_USER@$DROPLET_HOST:$REMOTE_DIR/"
 
+# Private campaign content (lore + roster per campaign) is not in git or in the
+# image -- docker-compose.yml mounts ./campaigns read-only into the container.
+# Locally it lives in data/campaigns/ (the app's CAMPAIGNS_DIR default); point
+# CAMPAIGNS_SRC at a different folder to copy that one instead.
+# tar over ssh, not rsync: tar ships with Git Bash on Windows, rsync does not.
+# The folder is replaced wholesale, so a file deleted locally is deleted there too.
+# Owner mode itself (OWNER_EMAILS, SESSION_SECRET, EMAIL_*) is configured in the
+# .env copied above -- see .env.example. Leave OWNER_EMAILS unset until the site is
+# served over TLS.
+CAMPAIGNS_SRC="${CAMPAIGNS_SRC:-data/campaigns}"
+if [ -d "$CAMPAIGNS_SRC" ]; then
+  echo "==> Copying campaign content from $CAMPAIGNS_SRC to $REMOTE_DIR/campaigns/"
+  tar -C "$CAMPAIGNS_SRC" -cz . | $SSH "rm -rf $REMOTE_DIR/campaigns && mkdir -p $REMOTE_DIR/campaigns && tar -C $REMOTE_DIR/campaigns -xz && chmod -R a+rX $REMOTE_DIR/campaigns"
+else
+  echo "==> No $CAMPAIGNS_SRC folder here: the app will run anonymous-only (public SRD rules) until you add one"
+fi
+
 # Compose auto-loads a .env sitting next to docker-compose.yml for variable
 # substitution (${IMAGE_NAME}/${IMAGE_TAG} in the image: line) -- writing
 # these here, not just exporting them for this one SSH session, means any
