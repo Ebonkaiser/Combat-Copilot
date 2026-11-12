@@ -2,7 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, map, of, tap, timeout } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { AuthMe, Mode } from '../models/auth.model';
+import { AuthMe, LoginMethod, Mode } from '../models/auth.model';
 
 /**
  * Who is using the app. The server decides: the session lives in an HttpOnly
@@ -18,7 +18,9 @@ export class AuthService {
   readonly mode = signal<Mode>('anonymous');
   readonly email = signal<string | null>(null);
   readonly ownerLoginEnabled = signal(false);
-  /** Development server with the console email provider: the login form offers "Fill code (dev)". */
+  /** What the sign-in form asks for. `email` until the server says otherwise. */
+  readonly loginMethod = signal<LoginMethod>('email');
+  /** Development server that can hand out a sign-in code: the login form offers "Fill code (dev)". */
   readonly devHelper = signal(false);
   /** True once /auth/me has answered at least once; until then `mode` is only a default. */
   readonly loaded = signal(false);
@@ -39,6 +41,7 @@ export class AuthService {
     this.mode.set(me.mode);
     this.email.set(me.mode === 'owner' ? (me.email ?? null) : null);
     this.ownerLoginEnabled.set(!!me.owner_login_enabled);
+    this.loginMethod.set(me.login_method === 'totp' ? 'totp' : 'email');
     this.devHelper.set(!!me.dev);
     this.loaded.set(true);
   }
@@ -48,19 +51,29 @@ export class AuthService {
     return this.http.post(`${this.baseUrl}/auth/request-code`, { email }).pipe(map(() => undefined));
   }
 
-  /** POST /auth/verify. On success the server has set the session cookie. */
+  /** POST /auth/verify with an emailed code. On success the server has set the session cookie. */
   verify(email: string, code: string): Observable<void> {
-    return this.http
-      .post<{ mode: Mode; email?: string }>(`${this.baseUrl}/auth/verify`, { email, code })
-      .pipe(
-        tap((result) => {
-          this.mode.set('owner');
-          this.email.set(result.email ?? email);
-          this.sessionExpired.set(false);
-          this.loaded.set(true);
-        }),
-        map(() => undefined),
-      );
+    return this.signIn({ email, code }, email);
+  }
+
+  /**
+   * POST /auth/verify with the code from the owner's authenticator app. No address is sent: the owner is
+   * the one address the server was set up with, and it comes back in the answer.
+   */
+  verifyTotp(code: string): Observable<void> {
+    return this.signIn({ code }, null);
+  }
+
+  private signIn(body: { email?: string; code: string }, fallbackEmail: string | null): Observable<void> {
+    return this.http.post<{ mode: Mode; email?: string }>(`${this.baseUrl}/auth/verify`, body).pipe(
+      tap((result) => {
+        this.mode.set('owner');
+        this.email.set(result.email ?? fallbackEmail);
+        this.sessionExpired.set(false);
+        this.loaded.set(true);
+      }),
+      map(() => undefined),
+    );
   }
 
   logout(): Observable<void> {
@@ -81,10 +94,13 @@ export class AuthService {
     this.sessionExpired.set(true);
   }
 
-  /** Development helper: the code the console email sender "sent". Emits null when unavailable. */
-  devLastCode(email: string): Observable<string | null> {
+  /**
+   * Development helper: the code the console email sender "sent" for `email`, or -- with an authenticator
+   * app, where there is no address -- the code that would sign in right now. Emits null when unavailable.
+   */
+  devLastCode(email?: string): Observable<string | null> {
     return this.http
-      .get<{ code: string }>(`${this.baseUrl}/auth/dev/last-code`, { params: { email } })
+      .get<{ code: string }>(`${this.baseUrl}/auth/dev/last-code`, { params: email ? { email } : {} })
       .pipe(
         map((result) => result.code),
         catchError(() => of(null)),

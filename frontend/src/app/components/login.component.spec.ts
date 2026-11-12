@@ -272,4 +272,194 @@ describe('LoginComponent', () => {
       expect(el<HTMLInputElement>('login-code')?.value).toBe('');
     });
   });
+
+  describe('with an authenticator app', () => {
+    // The server says login_method "totp": one step, just the code. Nothing is emailed and no address is asked for.
+    beforeEach(() => {
+      auth.loginMethod.set('totp');
+      fixture = TestBed.createComponent(LoginComponent);
+      closed = 0;
+      signedIn = 0;
+      fixture.componentInstance.closed.subscribe(() => closed++);
+      fixture.componentInstance.signedIn.subscribe(() => signedIn++);
+      fixture.detectChanges();
+    });
+
+    it('asks for the app\'s code straight away: no address, no "send code" step', () => {
+      expect(el('login-code')).not.toBeNull();
+      expect(el('login-totp-hint')?.textContent).toContain('authenticator app');
+      for (const absent of ['login-email', 'login-send', 'login-neutral', 'login-change-email', 'login-resend']) {
+        expect(el(absent)).withContext(absent).toBeNull();
+      }
+    });
+
+    it('is still an accessible modal dialog, and focuses the code field when it opens', async () => {
+      await fixture.whenStable();
+
+      expect((el('login-dialog') as HTMLElement).getAttribute('role')).toBe('dialog');
+      expect(document.activeElement).toBe(el('login-code'));
+    });
+
+    it('has the one-time-code input hints', () => {
+      const input = el<HTMLInputElement>('login-code') as HTMLInputElement;
+
+      expect(input.getAttribute('autocomplete')).toBe('one-time-code');
+      expect(input.getAttribute('inputmode')).toBe('numeric');
+      expect(input.maxLength).toBe(6);
+      expect(fixture.nativeElement.querySelector('label[for="login-code"]').textContent).toContain('6-digit code');
+    });
+
+    it('keeps only digits, at most six (an app shows "123 456")', () => {
+      type('login-code', '123 456');
+      expect(el<HTMLInputElement>('login-code')?.value).toBe('123456');
+
+      type('login-code', '12a 34-56789');
+      expect(el<HTMLInputElement>('login-code')?.value).toBe('123456');
+    });
+
+    it('cannot sign in until six digits are entered', () => {
+      type('login-code', '12345');
+      expect(el<HTMLButtonElement>('login-verify')?.disabled).toBeTrue();
+
+      type('login-code', '123456');
+      expect(el<HTMLButtonElement>('login-verify')?.disabled).toBeFalse();
+    });
+
+    it('signs in with the code alone and reports it', () => {
+      type('login-code', '482915');
+
+      click('login-verify');
+
+      expect(auth.verifyTotp).toHaveBeenCalledOnceWith('482915');
+      expect(auth.verify).not.toHaveBeenCalled();
+      expect(auth.requestCode).not.toHaveBeenCalled();
+      expect(signedIn).toBe(1);
+    });
+
+    it('submits on Enter too', () => {
+      type('login-code', '482915');
+
+      (fixture.nativeElement.querySelector('form') as HTMLFormElement).dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+
+      expect(auth.verifyTotp).toHaveBeenCalledOnceWith('482915');
+    });
+
+    it('does not submit twice while a request is in flight', () => {
+      const pending = new Subject<void>();
+      auth.verifyTotp.and.returnValue(pending);
+      type('login-code', '482915');
+
+      click('login-verify');
+      click('login-verify');
+
+      expect(auth.verifyTotp).toHaveBeenCalledTimes(1);
+      expect(el<HTMLButtonElement>('login-verify')?.disabled).toBeTrue();
+    });
+
+    it('a wrong code gets one neutral answer in the app\'s words, clears the field and does not sign in', () => {
+      auth.verifyTotp.and.returnValue(httpError(401));
+      type('login-code', '000000');
+
+      click('login-verify');
+
+      expect(signedIn).toBe(0);
+      expect(el('login-message')?.textContent).toContain('authenticator app');
+      expect(el('login-message')?.textContent).toContain('not valid');
+      expect(el('login-message')?.textContent).not.toContain('expired'); // that is the emailed-code wording
+      expect(el('login-message')?.getAttribute('role')).toBe('alert');
+      expect(el<HTMLInputElement>('login-code')?.value).toBe('');
+    });
+
+    it('explains a lockout with how long to wait, in minutes and then in hours', () => {
+      const asked = (retryAfter: string): string => {
+        auth.verifyTotp.and.returnValue(httpError(429, { 'Retry-After': retryAfter }));
+        type('login-code', '123456');
+        click('login-verify');
+        return el('login-message')?.textContent ?? '';
+      };
+
+      expect(asked('900')).toContain('Too many attempts. Try again in 15 minutes.');
+      expect(asked('60')).toContain('in 1 minute.');
+      expect(asked('5400')).toContain('in 90 minutes.');
+      expect(asked('7200')).toContain('in 2 hours.');
+      expect(asked('86400')).toContain('in 24 hours.');
+      expect(signedIn).toBe(0);
+    });
+
+    it('says to try again later when the lockout comes without a usable wait', () => {
+      const withoutAUsableWait: Record<string, string>[] = [{}, { 'Retry-After': '0' }, { 'Retry-After': 'soon' }];
+      for (const headers of withoutAUsableWait) {
+        auth.verifyTotp.and.returnValue(httpError(429, headers));
+        type('login-code', '123456');
+        click('login-verify');
+
+        expect(el('login-message')?.textContent).withContext(JSON.stringify(headers)).toContain('Too many attempts. Try again later.');
+      }
+    });
+
+    it('reports an unreachable server and other failures plainly', () => {
+      auth.verifyTotp.and.returnValue(httpError(0));
+      type('login-code', '123456');
+      click('login-verify');
+      expect(el('login-message')?.textContent).toContain('Could not reach the server');
+
+      auth.verifyTotp.and.returnValue(httpError(500));
+      type('login-code', '123456');
+      click('login-verify');
+      expect(el('login-message')?.textContent).toContain('HTTP 500');
+    });
+
+    it('closes on Cancel and on Escape, and explains an ended session', () => {
+      click('login-cancel');
+      (fixture.nativeElement.querySelector('.modal-overlay') as HTMLElement)
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(closed).toBe(2);
+
+      expect(el('login-expired')).toBeNull();
+      auth.sessionExpired.set(true);
+      fixture.detectChanges();
+      expect(el('login-expired')?.textContent).toContain('session ended');
+    });
+
+    describe('development helper', () => {
+      it('is not offered on a normal server', () => {
+        auth.devHelper.set(false);
+        fixture.detectChanges();
+
+        expect(el('login-dev-fill')).toBeNull();
+      });
+
+      it('fills in the code that would sign in right now, asking for no address', () => {
+        auth.devHelper.set(true);
+        auth.devLastCode.and.returnValue(of('482915'));
+        fixture.detectChanges();
+
+        click('login-dev-fill');
+
+        expect(auth.devLastCode).toHaveBeenCalledOnceWith(undefined);
+        expect(el<HTMLInputElement>('login-code')?.value).toBe('482915');
+        expect(el<HTMLButtonElement>('login-verify')?.disabled).toBeFalse();
+      });
+
+      it('says so when there is no code to fill in just now', () => {
+        auth.devHelper.set(true);
+        auth.devLastCode.and.returnValue(of(null));
+        fixture.detectChanges();
+
+        click('login-dev-fill');
+
+        expect(el('login-message')?.textContent).toContain('No development code is available right now');
+        expect(el<HTMLInputElement>('login-code')?.value).toBe('');
+      });
+    });
+
+    it('switches back to the email form if the server says so', () => {
+      auth.loginMethod.set('email');
+      fixture.detectChanges();
+
+      expect(el('login-email')).not.toBeNull();
+      expect(el('login-totp-hint')).toBeNull();
+    });
+  });
 });

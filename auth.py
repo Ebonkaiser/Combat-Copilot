@@ -1,17 +1,21 @@
-"""Owner authentication: passwordless email codes, signed session cookies, CSRF Origin check.
+"""Owner authentication: an authenticator-app code (or an emailed one), signed session cookies, CSRF Origin check.
 
 Two modes, decided server-side on every request:
   anonymous -- the default; public SRD rules only, nothing persisted for long.
-  owner     -- a visitor who proved control of an allowlisted email address;
-               may use private campaigns.
+  owner     -- a visitor who proved they are the owner; may use private campaigns.
 
-Flow: POST /auth/request-code emails a 6-digit code (always answering 202, so the
-owner address cannot be enumerated); POST /auth/verify trades the code for a
-signed, HttpOnly session cookie.
+Two ways to prove it. Setting OWNER_TOTP_SECRET selects the authenticator app; otherwise it is email:
+  authenticator app -- POST /auth/verify with the 6-digit code the owner's authenticator app shows
+                       (RFC 6238, see totp.py). Nothing is sent anywhere, so no email provider or DNS is
+                       needed. A code works once, and repeated wrong codes lock sign-in out for longer
+                       and longer.
+  email             -- POST /auth/request-code emails a 6-digit code (always answering 202, so the owner
+                       address cannot be enumerated); POST /auth/verify trades the code for the cookie.
+Either way the result is a signed, HttpOnly session cookie.
 
-Pending codes and rate-limit counters live in process memory. That REQUIRES a
-single uvicorn worker (the entrypoint runs exactly one); with more workers each
-would keep its own state. Move it to SQLite or Redis before ever raising that.
+Pending codes, rate-limit counters and the sign-in lockout live in process memory. That REQUIRES a
+single uvicorn worker (the entrypoint runs exactly one); with more workers each would keep its own
+state. Move it to SQLite or Redis before ever raising that. Restarting the process clears the lockout.
 Sessions are stateless signed tokens: changing SESSION_SECRET signs everyone out.
 """
 import hashlib
@@ -23,7 +27,7 @@ import secrets
 import threading
 import time
 from collections import OrderedDict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Deque, Dict, FrozenSet, Literal, Mapping, Optional, Tuple
 from urllib.parse import urlsplit
 
@@ -34,11 +38,13 @@ from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+import totp
 from email_sender import ConsoleEmailSender, EmailDeliveryError, EmailSender, ResendEmailSender
 
 logger = logging.getLogger("combat_copilot.auth")
 
 Mode = Literal["anonymous", "owner"]
+LoginMethod = Literal["email", "totp"]
 
 COOKIE_NAME = "cc_session"
 SESSION_LIFETIME_SECONDS = 7 * 24 * 60 * 60
@@ -46,6 +52,14 @@ SESSION_SALT = "combat-copilot.owner-session.v1"
 CODE_LIFETIME_SECONDS = 10 * 60
 CODE_MAX_FAILED_ATTEMPTS = 5
 MIN_SECRET_LENGTH = 32
+
+# Authenticator-app sign-in. After this many wrong codes in a row, sign-in locks for 15 minutes, and for
+# twice as long after each further lockout, up to a day; a correct code resets everything. The count is
+# per server, not per client, so a guessing attack cannot be spread across many addresses. The price is
+# that anyone can keep the owner locked out; restarting the process clears it (see the README).
+TOTP_MAX_FAILURES = 5
+TOTP_LOCKOUT_SECONDS = 15 * 60
+TOTP_LOCKOUT_MAX_SECONDS = 24 * 60 * 60
 
 # (max hits, window in seconds)
 REQUEST_PER_EMAIL = (3, 15 * 60)
@@ -74,16 +88,23 @@ def normalize_origin(value: str) -> str:
 class AuthConfig:
     env: str = "production"
     owner_emails: FrozenSet[str] = frozenset()
-    session_secret: str = ""  # never logged
+    session_secret: str = field(default="", repr=False)  # never logged
     allowed_origins: Tuple[str, ...] = ()
     email_provider: str = ""
-    email_api_key: str = ""  # never logged
+    email_api_key: str = field(default="", repr=False)  # never logged
     email_from: str = ""
     disabled_reason: Optional[str] = None  # why owner login is off, if it is
+    login_method: LoginMethod = "email"
+    owner_totp_key: bytes = field(default=b"", repr=False)  # the decoded OWNER_TOTP_SECRET; never logged
 
     @property
     def owner_login_enabled(self) -> bool:
         return self.disabled_reason is None
+
+    @property
+    def sole_owner(self) -> Optional[str]:
+        """The one address in OWNER_EMAILS, or None if there are several (or none)."""
+        return next(iter(self.owner_emails)) if len(self.owner_emails) == 1 else None
 
     @property
     def is_development(self) -> bool:
@@ -138,12 +159,24 @@ def load_auth_config(environ: Optional[Mapping[str, str]] = None) -> AuthConfig:
     provider = (variables.get("EMAIL_PROVIDER") or ("console" if env == "development" else "")).strip().lower()
     api_key = variables.get("EMAIL_API_KEY") or ""
     sender_address = variables.get("EMAIL_FROM") or ""
+    raw_totp_secret = (variables.get("OWNER_TOTP_SECRET") or "").strip()
+    method: LoginMethod = "totp" if raw_totp_secret else "email"
+    totp_key = b""
 
     reason: Optional[str] = None
     if not owner_emails:
         reason = "OWNER_EMAILS is not set"
     elif len(secret.encode("utf-8")) < MIN_SECRET_LENGTH:
         reason = f"SESSION_SECRET must be at least {MIN_SECRET_LENGTH} characters"
+    elif method == "totp":
+        # The authenticator app replaces email: no provider settings are needed (or looked at).
+        try:
+            totp_key = totp.decode_secret(raw_totp_secret)
+        except ValueError:
+            reason = "OWNER_TOTP_SECRET is not a valid base32 key of at least 128 bits"  # never echo the value
+        else:
+            if len(owner_emails) != 1:
+                reason = "authenticator sign-in supports exactly one address in OWNER_EMAILS"
     elif provider == "console":
         if env not in ("development", "test"):
             reason = "EMAIL_PROVIDER=console is only allowed when ENV is development or test"
@@ -162,12 +195,14 @@ def load_auth_config(environ: Optional[Mapping[str, str]] = None) -> AuthConfig:
         email_api_key=api_key,
         email_from=sender_address,
         disabled_reason=reason,
+        login_method=method,
+        owner_totp_key=totp_key,
     )
 
 
 def build_email_sender(config: AuthConfig) -> Optional[EmailSender]:
-    if not config.owner_login_enabled:
-        return None
+    if not config.owner_login_enabled or config.login_method == "totp":
+        return None  # nothing is ever emailed in authenticator mode
     if config.email_provider == "resend":
         return ResendEmailSender(api_key=config.email_api_key, from_address=config.email_from)
     return ConsoleEmailSender()
@@ -242,6 +277,13 @@ class AuthService:
         secret = config.session_secret.encode("utf-8") if config.owner_login_enabled else secrets.token_bytes(32)
         self._code_key = hmac.new(secret, b"combat-copilot.sign-in-code.v1", hashlib.sha256).digest()
         self._missing_digest = secrets.token_bytes(32)
+        # Authenticator-app state: the last step that signed the owner in (a code works once), and the
+        # lockout that follows repeated wrong codes.
+        self._totp_key = config.owner_totp_key
+        self._totp_last_step = -1
+        self._totp_failures = 0
+        self._totp_lockouts = 0
+        self._totp_locked_until = 0.0
         self._serializer = (
             URLSafeSerializer(config.session_secret, salt=SESSION_SALT) if config.owner_login_enabled else None
         )
@@ -264,6 +306,8 @@ class AuthService:
     def request_code(self, email: str, ip: str) -> Optional[str]:
         """Rate-limits the request, then returns the code to deliver -- or None when the email is not
         allowlisted (or login is off). The caller answers identically either way."""
+        if self.config.login_method == "totp":
+            return None  # nothing is ever sent: the owner reads the code from the authenticator app
         self._limit(f"request-ip:{ip}", REQUEST_PER_IP)
         self._limit(f"request-email:{email}", REQUEST_PER_EMAIL)
 
@@ -312,6 +356,70 @@ class AuthService:
                     del self._pending[email]  # the next attempt fails even with the right code
         return self.create_session(email) if matched else None
 
+    # ---- authenticator app
+
+    def verify_totp(self, code: str, ip: str) -> Optional[str]:
+        """Trades the authenticator app's current code for a session token for the owner.
+
+        Returns None for EVERY failure -- wrong, malformed, already used, login not configured -- so the
+        caller cannot tell them apart. Raises RateLimited while sign-in is locked out, or when this
+        address has used up its attempts."""
+        now = self.clock()
+        with self._lock:
+            locked_for = self._lockout_remaining(now)
+        if locked_for:
+            # Refused without looking at the code: a lockout teaches a guesser nothing, and the owner's
+            # right code is not spent while it lasts.
+            raise RateLimited(locked_for)
+        self._limit(f"verify-ip:{ip}", VERIFY_PER_IP)
+
+        owner = self.config.sole_owner
+        if not (self.config.owner_login_enabled and self.config.login_method == "totp" and owner):
+            return None
+        with self._lock:
+            # Checked AGAIN under the lock that evaluates a code. Parallel requests all pass the check above
+            # before the first wrong codes lock sign-in; without this each of them would still get its guess,
+            # and a burst could buy far more tries than a lockout is meant to allow.
+            locked_for = self._lockout_remaining(now)
+            if locked_for:
+                raise RateLimited(locked_for)
+            step = totp.match_step(self._totp_key, code, now, after_step=self._totp_last_step)
+            if step is None:
+                self._register_totp_failure(now)
+                return None
+            self._totp_last_step = step  # that code, and every older one, can never sign anyone in again
+            self._totp_failures = 0
+            self._totp_lockouts = 0
+        return self.create_session(owner)
+
+    def _lockout_remaining(self, now: float) -> int:
+        """Whole seconds of sign-in lockout left at ``now`` (0 when not locked). Caller holds the lock."""
+        remaining = self._totp_locked_until - now
+        return max(1, math.ceil(remaining)) if remaining > 0 else 0
+
+    def _register_totp_failure(self, now: float) -> None:
+        """Counts one wrong code and locks sign-in out after too many in a row. Caller holds the lock."""
+        self._totp_failures += 1
+        if self._totp_failures < TOTP_MAX_FAILURES * self.config.rate_limit_scale:
+            return
+        self._totp_lockouts += 1
+        seconds = min(TOTP_LOCKOUT_SECONDS * 2 ** min(self._totp_lockouts - 1, 16), TOTP_LOCKOUT_MAX_SECONDS)
+        self._totp_failures = 0
+        self._totp_locked_until = now + seconds
+        logger.warning("Owner sign-in is locked for %d minutes after repeated wrong codes.", seconds // 60)
+
+    def dev_totp_code(self) -> Optional[str]:
+        """Development helper: the code that would sign in right now -- the current step's, or the next
+        one's if the current one was already used. None when login is off or no unused step is valid yet."""
+        if not (self.config.owner_login_enabled and self.config.login_method == "totp"):
+            return None
+        now_step = totp.current_step(self.clock())
+        with self._lock:
+            step = max(now_step, self._totp_last_step + 1)
+        if step > now_step + totp.WINDOW:
+            return None
+        return totp.hotp(self._totp_key, step)
+
     # ---- sessions
 
     def create_session(self, email: str) -> str:
@@ -344,7 +452,9 @@ def create_auth_service(environ: Optional[Mapping[str, str]] = None) -> AuthServ
     config = load_auth_config(environ)
     if config.is_development:
         logger.warning("ENV=development: insecure (non-Secure) cookies and the dev sign-in helper are active.")
-    if config.owner_login_enabled:
+    if config.owner_login_enabled and config.login_method == "totp":
+        logger.info("Owner login enabled with an authenticator app (one owner address; no email is sent).")
+    elif config.owner_login_enabled:
         logger.info("Owner login enabled for %d allowlisted address(es).", len(config.owner_emails))
     elif config.owner_emails:
         logger.warning("Owner login is disabled: %s.", config.disabled_reason)
@@ -384,7 +494,9 @@ class RequestCodeBody(BaseModel):
 
 
 class VerifyBody(BaseModel):
-    email: str = Field(max_length=254)
+    # Required for an emailed code. Ignored for an authenticator-app code: the owner is the one address
+    # in OWNER_EMAILS, so the sign-in form does not ask for it.
+    email: Optional[str] = Field(default=None, max_length=254)
     code: str = Field(max_length=32)
 
 
@@ -412,9 +524,16 @@ async def request_code(body: RequestCodeBody, request: Request, background_tasks
 @router.post("/verify")
 async def verify(body: VerifyBody, request: Request, response: Response):
     auth = get_auth(request)
-    email = normalize_email(body.email)
+    use_totp = auth.config.login_method == "totp"
+    if not use_totp and body.email is None:
+        raise HTTPException(status_code=422, detail="email is required")
     try:
-        token = auth.verify_code(email, body.code, client_ip(request))
+        if use_totp:
+            email = auth.config.sole_owner
+            token = auth.verify_totp(body.code, client_ip(request))
+        else:
+            email = normalize_email(body.email or "")
+            token = auth.verify_code(email, body.code, client_ip(request))
     except RateLimited as exc:
         raise HTTPException(status_code=429, detail="Too many attempts", headers={"Retry-After": str(exc.retry_after)})
     if token is None:
@@ -440,7 +559,8 @@ async def me(request: Request, response: Response):
     result: dict = {
         "mode": "owner" if email else "anonymous",
         "owner_login_enabled": auth.config.owner_login_enabled,
-        "dev": auth.config.is_development and isinstance(auth.sender, ConsoleEmailSender),
+        "login_method": auth.config.login_method,
+        "dev": _dev_helper_offered(auth),
     }
     if email:
         result["email"] = email
@@ -461,16 +581,34 @@ async def logout(request: Request, response: Response):
     return {"mode": "anonymous"}
 
 
+def _dev_helper_offered(auth: AuthService) -> bool:
+    """True only on a development server that can hand out a sign-in code: with the authenticator app
+    that is any configured owner, with email it is the console sender."""
+    if not auth.config.is_development:
+        return False
+    if auth.config.login_method == "totp":
+        return auth.config.owner_login_enabled
+    return isinstance(auth.sender, ConsoleEmailSender)
+
+
 @router.get("/dev/last-code")
-async def dev_last_code(email: str, request: Request):
-    """Development convenience: the code the console sender "emailed". Answers exactly like an
-    unknown route everywhere else -- including to any non-loopback client, so even an ENV set by
-    mistake on a public host does not hand out sign-in codes."""
+async def dev_last_code(request: Request, email: Optional[str] = None):
+    """Development convenience: the code the console sender "emailed", or -- with the authenticator
+    app -- the code that would sign in right now. Answers exactly like an unknown route everywhere
+    else, including to any non-loopback client, so even an ENV set by mistake on a public host does
+    not hand out sign-in codes."""
     auth = get_auth(request)
-    sender = auth.sender
     host = request.client.host if request.client else ""
     loopback = host in ("127.0.0.1", "::1", "localhost")
-    if not (auth.config.is_development and loopback and isinstance(sender, ConsoleEmailSender)):
+    if not (loopback and _dev_helper_offered(auth)):
+        raise HTTPException(status_code=404, detail="Not Found")
+    if auth.config.login_method == "totp":
+        totp_code = auth.dev_totp_code()
+        if totp_code is None:  # that step's code was just used and the next one is not valid yet
+            raise HTTPException(status_code=409, detail="That code was just used; try again in a few seconds.")
+        return {"code": totp_code}
+    sender = auth.sender
+    if email is None or not isinstance(sender, ConsoleEmailSender):
         raise HTTPException(status_code=404, detail="Not Found")
     code = sender.last_codes.get(normalize_email(email))
     if code is None:

@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
-import { Mode } from '../models/auth.model';
+import { LoginMethod, Mode } from '../models/auth.model';
 
 /**
  * A stand-in for AuthService with the same signals and no HTTP, for component tests:
@@ -11,6 +11,7 @@ export class FakeAuthService {
   mode = signal<Mode>('anonymous');
   email = signal<string | null>(null);
   ownerLoginEnabled = signal(true);
+  loginMethod = signal<LoginMethod>('email');
   devHelper = signal(false);
   loaded = signal(true);
   sessionExpired = signal(false);
@@ -18,6 +19,7 @@ export class FakeAuthService {
   load = jasmine.createSpy('load').and.callFake(() => of(true));
   requestCode = jasmine.createSpy('requestCode').and.callFake(() => of(undefined));
   verify = jasmine.createSpy('verify').and.callFake(() => of(undefined));
+  verifyTotp = jasmine.createSpy('verifyTotp').and.callFake(() => of(undefined));
   logout = jasmine.createSpy('logout').and.callFake(() => {
     this.mode.set('anonymous');
     this.email.set(null);

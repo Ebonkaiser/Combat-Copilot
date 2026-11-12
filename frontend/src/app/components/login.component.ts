@@ -1,4 +1,4 @@
-import { Component, ElementRef, afterNextRender, inject, output, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, afterNextRender, computed, inject, output, signal, viewChild } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../services/auth.service';
@@ -6,10 +6,12 @@ import { AuthService } from '../services/auth.service';
 type Step = 'email' | 'code';
 
 /**
- * Passwordless owner sign-in: email, then the 6-digit code that was emailed.
+ * Passwordless owner sign-in. Two forms, chosen by the server (GET /auth/me `login_method`):
  *
- * It never says whether an address is the owner's -- the server answers the same
- * way for every address, and so does this form.
+ *  - authenticator app: one step -- the 6-digit code the owner's app shows. Nothing is sent and no address
+ *    is asked for;
+ *  - email: the address, then the 6-digit code that was emailed. It never says whether an address is the
+ *    owner's -- the server answers the same way for every address, and so does this form.
  */
 @Component({
   selector: 'app-login',
@@ -24,7 +26,31 @@ type Step = 'email' | 'code';
           <p class="login-note" data-testid="login-expired">Your session ended, so campaign content is locked. Sign in again to continue.</p>
         }
 
-        @if (step() === 'email') {
+        @if (isTotp()) {
+          <p class="hint login-neutral" data-testid="login-totp-hint">Open your authenticator app and enter the 6-digit code it shows for Combat Copilot.</p>
+
+          <form (ngSubmit)="submitCode()" novalidate>
+            <label for="login-code">6-digit code</label>
+            <input #codeInput id="login-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+                   maxlength="6" pattern="[0-9]*" class="w-100 mb-8 code-input"
+                   [value]="code()" (input)="onCodeInput($event)" data-testid="login-code" />
+
+            @if (message()) {
+              <p class="login-message" [class.error]="isError()" [attr.role]="isError() ? 'alert' : 'status'" data-testid="login-message">{{ message() }}</p>
+            }
+
+            @if (auth.devHelper()) {
+              <div class="login-links">
+                <button type="button" class="btn btn-secondary btn-sm" (click)="fillDevCode()" data-testid="login-dev-fill">Fill code (dev)</button>
+              </div>
+            }
+
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" (click)="close()" data-testid="login-cancel">Cancel</button>
+              <button type="submit" class="btn" [disabled]="busy() || code().length !== 6" data-testid="login-verify">Sign in</button>
+            </div>
+          </form>
+        } @else if (step() === 'email') {
           <form (ngSubmit)="sendCode()" novalidate>
             <label for="login-email">Email</label>
             <input #emailInput id="login-email" name="email" type="email" autocomplete="email" class="w-100 mb-8"
@@ -77,6 +103,9 @@ export class LoginComponent {
   readonly closed = output<void>();
   readonly signedIn = output<void>();
 
+  /** True when the server wants an authenticator-app code instead of an emailed one. */
+  protected readonly isTotp = computed(() => this.auth.loginMethod() === 'totp');
+
   protected email = '';
   protected readonly step = signal<Step>('email');
   protected readonly code = signal('');
@@ -88,7 +117,7 @@ export class LoginComponent {
   private readonly codeInput = viewChild<ElementRef<HTMLInputElement>>('codeInput');
 
   constructor() {
-    afterNextRender(() => this.emailInput()?.nativeElement.focus());
+    afterNextRender(() => (this.isTotp() ? this.codeInput() : this.emailInput())?.nativeElement.focus());
   }
 
   protected close(): void {
@@ -134,7 +163,8 @@ export class LoginComponent {
     }
     this.busy.set(true);
     this.setMessage('');
-    this.auth.verify(this.email.trim(), code).subscribe({
+    const request = this.isTotp() ? this.auth.verifyTotp(code) : this.auth.verify(this.email.trim(), code);
+    request.subscribe({
       next: () => {
         this.busy.set(false);
         this.signedIn.emit();
@@ -144,7 +174,12 @@ export class LoginComponent {
         if (error.status === 401) {
           // The same answer for a wrong, expired, reused or never-issued code: the server does not say which.
           this.code.set('');
-          this.setMessage('That code is not valid or has expired. Check it and try again, or send a new code.', true);
+          this.setMessage(
+            this.isTotp()
+              ? 'That code is not valid. Use the code your authenticator app shows right now, and try again.'
+              : 'That code is not valid or has expired. Check it and try again, or send a new code.',
+            true,
+          );
           setTimeout(() => this.codeInput()?.nativeElement.focus());
         } else {
           this.setMessage(this.failureMessage(error, 'attempts'), true);
@@ -160,14 +195,22 @@ export class LoginComponent {
     setTimeout(() => this.emailInput()?.nativeElement.focus());
   }
 
-  /** Development servers only: fetch the code the console email sender logged and fill it in. */
+  /**
+   * Development servers only: fill in the code the console email sender logged -- or, with an authenticator
+   * app, the code that would sign in right now.
+   */
   protected fillDevCode(): void {
-    this.auth.devLastCode(this.email.trim()).subscribe((code) => {
+    this.auth.devLastCode(this.isTotp() ? undefined : this.email.trim()).subscribe((code) => {
       if (code) {
         this.code.set(code);
         this.setMessage('');
       } else {
-        this.setMessage('No development code is available for that email.', true);
+        this.setMessage(
+          this.isTotp()
+            ? 'No development code is available right now. Wait a few seconds and try again.'
+            : 'No development code is available for that email.',
+          true,
+        );
       }
     });
   }
@@ -187,15 +230,24 @@ export class LoginComponent {
 
   private failureMessage(error: HttpErrorResponse, what: string): string {
     if (error.status === 429) {
-      const seconds = Number(error.headers?.get('Retry-After'));
-      const minutes = seconds > 0 ? Math.ceil(seconds / 60) : 0;
-      return minutes > 0
-        ? `Too many ${what}. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`
-        : `Too many ${what}. Try again later.`;
+      const wait = this.waitText(Number(error.headers?.get('Retry-After')));
+      return wait ? `Too many ${what}. Try again in ${wait}.` : `Too many ${what}. Try again later.`;
     }
     if (error.status === 0) {
       return 'Could not reach the server. Try again in a moment.';
     }
     return `Something went wrong (HTTP ${error.status}). Try again.`;
+  }
+
+  /** "1 minute", "15 minutes", "24 hours": the wait a Retry-After header asks for, rounded up. */
+  private waitText(seconds: number): string {
+    if (!(seconds > 0)) {
+      return '';
+    }
+    const minutes = Math.ceil(seconds / 60);
+    if (minutes < 120) {
+      return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    }
+    return `${Math.ceil(minutes / 60)} hours`;
   }
 }

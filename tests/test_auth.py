@@ -372,7 +372,13 @@ def test_me_reports_the_owner_after_signing_in(open_api):
 
     sign_in(api)
 
-    assert me(api) == {"mode": "owner", "email": OWNER_EMAIL, "owner_login_enabled": True, "dev": False}
+    assert me(api) == {
+        "mode": "owner",
+        "email": OWNER_EMAIL,
+        "owner_login_enabled": True,
+        "login_method": "email",
+        "dev": False,
+    }
 
 
 def test_every_failure_looks_the_same(open_api):
@@ -611,7 +617,7 @@ def test_me_is_anonymous_by_default_and_is_never_cached(open_api):
 
     response = api.client.get("/auth/me")
 
-    assert response.json() == {"mode": "anonymous", "owner_login_enabled": True, "dev": True}
+    assert response.json() == {"mode": "anonymous", "owner_login_enabled": True, "login_method": "email", "dev": True}
     assert response.headers["cache-control"] == "no-store"
 
 

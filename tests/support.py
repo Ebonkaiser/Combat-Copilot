@@ -7,6 +7,7 @@ from typing import Any
 
 from chromadb.api.shared_system_client import SharedSystemClient
 
+import totp
 from fake_ai import HashingEmbedding  # noqa: F401  (re-exported for the tests)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -51,7 +52,7 @@ def simulate_process_restart(kb) -> None:
 # Everything the server reads from the environment for auth/campaigns. Cleared
 # before each API test so a developer's real shell or .env never leaks in.
 SERVER_ENV_VARS = (
-    "ENV", "OWNER_EMAILS", "SESSION_SECRET", "ALLOWED_ORIGINS",
+    "ENV", "OWNER_EMAILS", "SESSION_SECRET", "ALLOWED_ORIGINS", "OWNER_TOTP_SECRET",
     "EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM", "CAMPAIGNS_DIR", "FAKE_AI",
 )
 
@@ -118,5 +119,32 @@ def sign_in(api, email=OWNER_EMAIL):
     """Runs the real request-code -> verify flow; the client's cookie jar then holds the session."""
     assert request_code(api, email).status_code == 202
     response = verify(api, api.sender.last_code, email)
+    assert response.status_code == 200, response.text
+    return response
+
+
+# ------------------------------------------------------------- authenticator app
+
+TOTP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"  # base32 of "12345678901234567890", RFC 6238's test key
+
+
+def totp_env(**overrides) -> dict:
+    """owner_env() with the authenticator-app sign-in selected (no email settings needed)."""
+    return owner_env(OWNER_TOTP_SECRET=TOTP_SECRET, **overrides)
+
+
+def totp_code(api, steps_ahead: int = 0) -> str:
+    """The code an authenticator app shows at the API's (fake) clock -- or ``steps_ahead`` 30-second
+    steps later (negative: earlier)."""
+    return totp.totp_at(totp.decode_secret(TOTP_SECRET), api.clock.now + steps_ahead * totp.PERIOD)
+
+
+def verify_totp(api, code, **kwargs):
+    """The authenticator-app sign-in request: just the code, no email."""
+    return api.client.post("/auth/verify", json={"code": code}, **kwargs)
+
+
+def sign_in_totp(api, steps_ahead: int = 0):
+    response = verify_totp(api, totp_code(api, steps_ahead))
     assert response.status_code == 200, response.text
     return response

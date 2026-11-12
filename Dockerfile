@@ -42,7 +42,7 @@ COPY --from=backend-deps /install /usr/local
 # Backend source (same exclusions as the original backend-only image: no
 # tests/, eval_harness.py, fake_ai.py, .env, or chroma_db/ -- the latter is
 # generated output that belongs in a volume, not the image).
-COPY schemas.py state_engine.py knowledge_engine.py combat_graph.py server.py resilience.py persistence.py campaigns.py auth.py email_sender.py ./
+COPY schemas.py state_engine.py knowledge_engine.py combat_graph.py server.py resilience.py persistence.py campaigns.py auth.py email_sender.py totp.py ./
 # Only the public SRD rules are baked in. Campaign lore is private: it is NOT
 # copied (and is .dockerignore'd) -- it is bind-mounted read-only at
 # /app/data/campaigns at runtime (see docker-compose.yml).
