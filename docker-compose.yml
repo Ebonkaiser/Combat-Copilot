@@ -8,6 +8,9 @@ services:
     image: ${IMAGE_NAME:-combat-copilot}:${IMAGE_TAG:-latest}
     build:
       context: .
+    # Comes back by itself after a Droplet reboot or a Docker restart. `docker compose stop` or `down`
+    # keeps it stopped; on your own machine it also means a running stack restarts with Docker Desktop.
+    restart: unless-stopped
     ports:
       # Plain http on every network interface by default. Behind the HTTPS front door below, set
       # APP_BIND_ADDRESS=127.0.0.1 in .env: only Caddy, on this same host, can then reach the app, and

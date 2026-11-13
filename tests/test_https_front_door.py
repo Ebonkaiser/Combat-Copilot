@@ -44,6 +44,12 @@ def test_caddy_is_an_opt_in_profile_and_the_app_always_runs():
     assert services["caddy"]["depends_on"] == ["app"]
 
 
+@pytest.mark.parametrize("service", ["app", "caddy"])
+def test_both_services_come_back_after_a_reboot(service):
+    # Without a restart policy a Droplet reboot leaves the site down until someone runs `docker compose up -d`.
+    assert compose_file()["services"][service]["restart"] == "unless-stopped"
+
+
 def test_caddy_publishes_the_web_ports_and_nothing_else():
     assert set(compose_file()["services"]["caddy"]["ports"]) == {"80:80", "443:443", "443:443/udp"}
 
