@@ -43,8 +43,8 @@ REMOTE_DIR="${REMOTE_DIR:-combat-copilot}"
 SSH="ssh -i $DEPLOY_KEY $DROPLET_USER@$DROPLET_HOST"
 SCP="scp -i $DEPLOY_KEY"
 
-if [ ! -f docker-compose.yml ] || [ ! -f .env ]; then
-  echo "Run this from the repo root -- docker-compose.yml and .env must both be present locally." >&2
+if [ ! -f docker-compose.yml ] || [ ! -f Caddyfile ] || [ ! -f .env ]; then
+  echo "Run this from the repo root -- docker-compose.yml, Caddyfile and .env must all be present locally." >&2
   exit 1
 fi
 
@@ -54,8 +54,10 @@ $SSH "docker --version && docker compose version"
 echo "==> Creating $REMOTE_DIR/ on the Droplet"
 $SSH "mkdir -p $REMOTE_DIR"
 
-echo "==> Copying docker-compose.yml and .env"
-$SCP docker-compose.yml .env "$DROPLET_USER@$DROPLET_HOST:$REMOTE_DIR/"
+# The Caddyfile only matters once the HTTPS front door is on (COMPOSE_PROFILES=https in .env), but the
+# compose file mounts it, so it travels with the compose file.
+echo "==> Copying docker-compose.yml, Caddyfile and .env"
+$SCP docker-compose.yml Caddyfile .env "$DROPLET_USER@$DROPLET_HOST:$REMOTE_DIR/"
 
 # Private campaign content (lore + roster per campaign) is not in git or in the
 # image -- docker-compose.yml mounts ./campaigns read-only into the container.
@@ -98,3 +100,4 @@ echo "==> Sanity check from inside the Droplet"
 $SSH "curl -sS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8080/ || echo 'No response yet -- check: ssh in and run docker compose logs'"
 
 echo "==> Done. Confirm it's reachable from a browser at http://$DROPLET_HOST:8080/ (or through your firewall's allowed port) before considering this verified."
+echo "    Owner sign-in needs HTTPS: see the README section 'HTTPS on the Droplet' (COMPOSE_PROFILES, SITE_ADDRESS, APP_BIND_ADDRESS in .env)."

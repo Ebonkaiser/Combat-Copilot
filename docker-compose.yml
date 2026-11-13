@@ -9,7 +9,10 @@ services:
     build:
       context: .
     ports:
-      - "8080:8080"
+      # Plain http on every network interface by default. Behind the HTTPS front door below, set
+      # APP_BIND_ADDRESS=127.0.0.1 in .env: only Caddy, on this same host, can then reach the app, and
+      # the one public address is https://SITE_ADDRESS (http://<ip>:8080 stops answering from outside).
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:8080:8080"
     env_file:
       - .env
     volumes:
@@ -23,6 +26,34 @@ services:
       # the app then runs anonymous-only with the public rules.
       - ./campaigns:/app/data/campaigns:ro
 
+  # HTTPS front door: Caddy gets and renews a free Let's Encrypt certificate for SITE_ADDRESS by itself
+  # and proxies to the app. OFF unless the "https" profile is on: put COMPOSE_PROFILES=https and
+  # SITE_ADDRESS=<your host name> in .env (README, "HTTPS"). It needs ports 80 and 443 open to the
+  # internet and SITE_ADDRESS already pointing at this host, or no certificate is issued.
+  # Like Caddyfile, this file is NOT updated by the CI deploy: copy both over by hand when they change.
+  caddy:
+    # A major-version tag on purpose: this is the internet-facing part, so `docker compose pull` should
+    # bring its security fixes.
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3; optional, browsers fall back to HTTPS over TCP
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The certificates and the ACME account. Keep them: without them every restart would ask Let's
+      # Encrypt for a new certificate, and its rate limits would soon say no.
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   chroma_data:
   state_data:
+  caddy_data:
+  caddy_config:

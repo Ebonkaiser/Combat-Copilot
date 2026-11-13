@@ -41,7 +41,7 @@ Nothing is sent anywhere, so no email provider and no DNS are involved.
 
    It shows a setup key (and a QR code if you `pip install qrcode`), asks for the 6-digit code your app then shows -- proof it works -- and only then prints the lines for the server. Save the setup key in your password manager.
 2. Put the three printed lines (`OWNER_EMAILS`, `OWNER_TOTP_SECRET`, `SESSION_SECRET`) in the Droplet's `.env` and run `docker compose up -d` in that folder. This mode allows exactly one address in `OWNER_EMAILS`, and the sign-in form asks only for the code.
-3. Sign in, over HTTPS, with the 6-digit code the app shows.
+3. Sign in, over HTTPS (see *HTTPS on the Droplet* below), with the 6-digit code the app shows.
 
 What the server does with it:
 
@@ -89,6 +89,7 @@ Copy `.env.example` to `.env` and fill it in (never commit `.env`). Key settings
 | `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` | emailed sign-in codes, used only without `OWNER_TOTP_SECRET` (Resend over HTTPS; `console` only in development) |
 | `ALLOWED_ORIGINS` | cross-site origins allowed (empty in production: same-origin only) |
 | `CAMPAIGNS_DIR` | where campaign folders live (default `./data/campaigns`) |
+| `COMPOSE_PROFILES`, `SITE_ADDRESS`, `APP_BIND_ADDRESS` | the HTTPS front door, read by Docker Compose (see *HTTPS on the Droplet*): `COMPOSE_PROFILES=https` turns Caddy on, `SITE_ADDRESS` is the host name it gets a certificate for, `APP_BIND_ADDRESS=127.0.0.1` closes the plain-http port to the outside |
 
 Owner mode stays off unless `OWNER_EMAILS`, a valid `SESSION_SECRET` and either a valid `OWNER_TOTP_SECRET` or a working email provider are all configured; the server logs why it is off (never including a secret).
 
@@ -134,15 +135,40 @@ The end-to-end run starts its own isolated stacks -- one per sign-in method, on 
 
 * **Single uvicorn worker.** Pending sign-in codes, rate-limit counters, the authenticator lockout and the last-used authenticator code live in process memory, so the entrypoint runs exactly one worker. Move that state to SQLite or Redis before ever raising it.
 * **nginx must forward the original `Host` and the client address** (it does -- see `nginx.conf`): the backend's CSRF check compares a browser's `Origin` to the host it was addressed to, and its sign-in rate limits are per client address.
-* **Enable owner mode only behind TLS.** Session cookies are `Secure`; sign-in over plain http would not work and must not be attempted over an untrusted network. The Droplet is plain http until TLS is set up.
+* **Enable owner mode only behind TLS** (see *HTTPS on the Droplet* below). Session cookies are `Secure`, and a browser refuses to keep one that arrives over plain http (localhost excepted), so sign-in there looks as if it worked and then drops you back to anonymous. It must not be attempted over an untrusted network either.
 * **Email (only if you do not use an authenticator app):** DigitalOcean blocks SMTP, so codes go out through Resend's HTTPS API. Verify a sending (sub)domain with Resend, create a *send-only* API key, and put it only in the Droplet's `.env`.
 * **Sessions are stateless signed tokens**: logging out clears the cookie; changing `SESSION_SECRET` signs everyone out.
-* **Campaign content on the Droplet:** the CI deploy ships the image only -- it never copies your campaigns, and it never updates the Droplet's `docker-compose.yml` (copy that over by hand when it changes, e.g. to gain the `./campaigns` mount). `scripts/provision-droplet.sh` copies local `data/campaigns/` to `~/combat-copilot/campaigns/`, but it also overwrites the Droplet's `.env`, so for later lore edits use just the copy step, then restart the container:
+* **Campaign content on the Droplet:** the CI deploy ships the image only -- it never copies your campaigns, and it never updates the Droplet's `docker-compose.yml` or `Caddyfile` (copy those over by hand when they change, e.g. to gain the `./campaigns` mount or the HTTPS front door). `scripts/provision-droplet.sh` copies local `data/campaigns/` to `~/combat-copilot/campaigns/`, but it also overwrites the Droplet's `.env`, so for later lore edits use just the copy step, then restart the container:
 
   ```bash
   tar -C data/campaigns -cz . | ssh -i ~/.ssh/combat_copilot_deploy root@<droplet-ip> \
     "rm -rf ~/combat-copilot/campaigns && mkdir -p ~/combat-copilot/campaigns && tar -C ~/combat-copilot/campaigns -xz && chmod -R a+rX ~/combat-copilot/campaigns && cd ~/combat-copilot && docker compose restart"
   ```
+
+## HTTPS on the Droplet
+
+Owner sign-in needs HTTPS. `docker-compose.yml` has a `caddy` service (profile `https`, off by default) that gets and renews a free Let's Encrypt certificate by itself, redirects http to https and proxies to the app. All it needs is a host name that points at the Droplet. With no domain (or no access to its DNS), a free [DuckDNS](https://www.duckdns.org) name does: `duckdns.org` is on the public suffix list, so Let's Encrypt counts every name separately.
+
+1. **Host name.** On duckdns.org sign in, add a name and set its *current ip* to the Droplet's address; check it with `nslookup yourname.duckdns.org`. (With your own domain: one `A` record to the Droplet's address.)
+2. **Open ports 80 and 443** (TCP) to the internet in the DigitalOcean Cloud Firewall, if the Droplet has one. Port 80 carries the certificate check and the http-to-https redirect. ufw is not in the way: Docker publishes those ports itself.
+3. **Copy `docker-compose.yml` and `Caddyfile`** to `~/combat-copilot/` on the Droplet (the CI deploy never does).
+4. **Add three lines to the Droplet's `.env`:**
+
+   ```text
+   COMPOSE_PROFILES=https
+   SITE_ADDRESS=yourname.duckdns.org
+   APP_BIND_ADDRESS=127.0.0.1
+   ```
+
+5. **`cd ~/combat-copilot && docker compose up -d`**, then open `https://yourname.duckdns.org`. The first certificate takes a few seconds; `docker compose logs caddy` says why if it does not arrive.
+
+Good to know:
+
+* `APP_BIND_ADDRESS=127.0.0.1` makes `http://<droplet-ip>:8080` stop answering from outside, so only the HTTPS address works. The CI deploy's health check runs on the Droplet itself and is unaffected.
+* nginx reads the visitor's address from the `X-Forwarded-For` header Caddy sets, but only for requests that come from a private (Docker) network (`set_real_ip_from` in `nginx.conf`); without that, every visitor would look like the same address to the sign-in limits.
+* The certificates live in the `caddy_data` volume: do not delete it, or each restart asks Let's Encrypt again and its rate limits will soon say no. Caddy renews them on its own.
+* To move to your own domain later, change `SITE_ADDRESS` and run `docker compose up -d` again.
+* To look at the front door on your own machine, run with `COMPOSE_PROFILES=https` and leave `SITE_ADDRESS` unset: Caddy then serves a self-signed certificate at `https://localhost` (a browser warns; that is expected).
 
 ## Repository layout
 
@@ -163,6 +189,6 @@ combat-copilot/
 ├── data/campaigns/      # PRIVATE campaign content (git-ignored, not in the image)
 ├── tests/               # pytest suites; tests/fixtures/campaigns/ is synthetic
 ├── frontend/            # Angular app, Karma specs, Playwright e2e (frontend/e2e)
-├── Dockerfile, nginx.conf, entrypoint.sh, docker-compose.yml
+├── Dockerfile, nginx.conf, entrypoint.sh, docker-compose.yml, Caddyfile   # Caddyfile: the optional HTTPS front door
 └── scripts/             # provision-droplet.sh; totp_setup.py (authenticator enrolment, run on your computer)
 ```

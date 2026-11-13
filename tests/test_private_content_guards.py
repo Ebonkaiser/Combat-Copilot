@@ -9,6 +9,8 @@
 Offline and fast; the git checks skip themselves when git or a checkout is absent.
 """
 import ast
+import ipaddress
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -163,3 +165,41 @@ def test_nginx_sets_rather_than_appends_the_client_address():
 
 def test_nginx_keeps_buffering_off_for_the_damage_stream():
     assert "proxy_buffering off;" in nginx_api_location()
+
+
+PRIVATE_NETWORKS = [ipaddress.ip_network(cidr) for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8")]
+# Addresses Docker's default address pools (172.17-31.x.x and 192.168.x.x) hand to a container such as Caddy.
+DOCKER_DEFAULT_ADDRESSES = ["172.17.0.2", "172.18.0.3", "172.31.255.254", "192.168.16.2", "192.168.240.5"]
+
+
+def nginx_trusted_proxies() -> list:
+    text = (ROOT / "nginx.conf").read_text(encoding="utf-8")
+    return [ipaddress.ip_network(cidr) for cidr in re.findall(r"^\s*set_real_ip_from\s+(\S+?);", text, re.MULTILINE)]
+
+
+def test_nginx_believes_the_forwarded_visitor_address_only_from_private_networks():
+    # Behind the HTTPS front door every request comes from the Caddy container, so nginx has to read the
+    # visitor's address from X-Forwarded-For -- but only when the request really comes from a private
+    # network. Trusting a public address (or everyone: 0.0.0.0/0) would let any visitor pick the address the
+    # sign-in limits count against.
+    trusted = nginx_trusted_proxies()
+
+    assert trusted, "without set_real_ip_from every visitor behind Caddy shares the front door's address"
+    for network in trusted:
+        inside_private = any(network.version == private.version and network.subnet_of(private) for private in PRIVATE_NETWORKS)
+        assert inside_private, f"nginx would believe X-Forwarded-For from {network}, which is not a private network"
+
+
+@pytest.mark.parametrize("address", DOCKER_DEFAULT_ADDRESSES)
+def test_nginx_trusts_the_front_door_wherever_docker_puts_it(address):
+    # If Caddy's own address is not trusted, nginx ignores X-Forwarded-For and every visitor looks like Caddy:
+    # the per-address sign-in limits then apply to the whole internet at once.
+    assert any(ipaddress.ip_address(address) in network for network in nginx_trusted_proxies())
+
+
+def test_nginx_reads_the_visitor_address_from_x_forwarded_for_and_not_recursively():
+    text = (ROOT / "nginx.conf").read_text(encoding="utf-8")
+
+    assert re.search(r"^\s*real_ip_header\s+X-Forwarded-For;", text, re.MULTILINE)
+    # Recursive mode skips trusted hops from the right and so lets a visitor-supplied value win.
+    assert not re.search(r"^\s*real_ip_recursive\s+on;", text, re.MULTILINE)

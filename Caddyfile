@@ -1,0 +1,13 @@
+# HTTPS front door for the app. It runs only when the "https" compose profile is on (docker-compose.yml;
+# README, "HTTPS"). Caddy gets and renews a free Let's Encrypt certificate for SITE_ADDRESS by itself,
+# redirects http:// to https://, and hands the traffic to the app container (nginx, port 8080).
+#
+# SITE_ADDRESS is the public host name from .env, e.g. SITE_ADDRESS=yourname.duckdns.org. It must already
+# point at this server, and ports 80 and 443 must be open to the internet, or no certificate is issued.
+# Left at its default (localhost) Caddy serves a self-signed certificate: only good for trying this out.
+{$SITE_ADDRESS:localhost} {
+	reverse_proxy app:8080 {
+		# The narration arrives as a stream: pass each piece on as it is written instead of buffering it.
+		flush_interval -1
+	}
+}
